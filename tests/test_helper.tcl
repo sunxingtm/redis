@@ -88,7 +88,7 @@ proc main {} {
 #    execute_tests "integration/aof"
 
     # run tests with VM enabled
-    set ::global_overrides [list [list vm-enabled yes]]
+#    set ::global_overrides [list [list vm-enabled yes]]
 #    execute_tests "unit/protocol"
 #    execute_tests "unit/basic"
 #    execute_tests "unit/type/list"

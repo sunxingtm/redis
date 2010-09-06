@@ -1,4 +1,4 @@
-start_server {tags {"expire"}} {
+start_server {tags {"expire"} overrides {vm-enabled yes loglevel debug}} {
     test {EXPIRE - don't set timeouts multiple times} {
         r set x foobar
         set v1 [r expire x 5]
