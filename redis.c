@@ -1062,6 +1062,7 @@ static void redisLog(int level, const char *fmt, ...) {
     char *c = ".-*#";
     char buf[64];
     time_t now;
+    struct timeval tv;
 
     if (level < server.verbosity) return;
 
@@ -1069,9 +1070,12 @@ static void redisLog(int level, const char *fmt, ...) {
     if (!fp) return;
 
     va_start(ap, fmt);
+    gettimeofday(&tv,NULL);
     now = time(NULL);
     strftime(buf,64,"%d %b %H:%M:%S",localtime(&now));
-    fprintf(fp,"[%d] %s %c ",(int)getpid(),buf,c[level]);
+    fprintf(fp,"[%d] %s {%lld.%lld} %c ",(int)getpid(),buf,
+        (long long) tv.tv_sec,
+        (long long) tv.tv_usec, c[level]);
     vfprintf(fp, fmt, ap);
     fprintf(fp,"\n");
     fflush(fp);
