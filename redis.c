@@ -604,7 +604,7 @@ static int vmCanSwapOut(void);
 static int tryFreeOneObjectFromFreelist(void);
 static void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask);
 static void vmThreadedIOCompletedJob(aeEventLoop *el, int fd, void *privdata, int mask);
-static void vmCancelThreadedIOJob(robj *o);
+static redisDb *vmCancelThreadedIOJob(robj *o);
 static void lockThreadedIO(void);
 static void unlockThreadedIO(void);
 static int vmSwapObjectThreaded(robj *key, robj *val, redisDb *db);
@@ -1524,6 +1524,10 @@ static int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientD
                 if ((de = dictGetRandomKey(db->expires)) == NULL) break;
                 t = (time_t) dictGetEntryVal(de);
                 if (now > t) {
+                    {
+                        robj *key = dictGetEntryKey(de);
+                        redisLog(REDIS_DEBUG,"force-expire %s",(char*)key->ptr);
+                    }
                     deleteKey(db,dictGetEntryKey(de));
                     expired++;
                     server.stat_expiredkeys++;
@@ -3036,7 +3040,12 @@ static void decrRefCount(void *obj) {
     if (server.vm_enabled &&
         (o->storage == REDIS_VM_SWAPPED || o->storage == REDIS_VM_LOADING))
     {
-        if (o->storage == REDIS_VM_LOADING) vmCancelThreadedIOJob(obj);
+        if (o->storage == REDIS_VM_LOADING) {
+            robj *key = dupStringObject(obj);
+            redisDb *db = vmCancelThreadedIOJob(obj);
+            handleClientsBlockedOnSwappedKey(db,key);
+            decrRefCount(key);
+        }
         redisAssert(o->type == REDIS_STRING);
         freeStringObject(o);
         vmMarkPagesFree(o->vm.page,o->vm.usedpages);
@@ -3087,6 +3096,9 @@ static robj *lookupKey(redisDb *db, robj *key) {
             } else {
                 int notify = (key->storage == REDIS_VM_LOADING);
 
+                redisLog(REDIS_DEBUG,"Force-load of %s, storage: %d",
+                        (char*)key->ptr, key->storage);
+
                 /* Our value was swapped on disk. Bring it at home. */
                 redisAssert(val == NULL);
                 val = vmLoadObject(key);
@@ -3094,7 +3106,12 @@ static robj *lookupKey(redisDb *db, robj *key) {
 
                 /* Clients blocked by the VM subsystem may be waiting for
                  * this key... */
-                if (notify) handleClientsBlockedOnSwappedKey(db,key);
+                if (notify) {
+                    redisLog(REDIS_DEBUG,
+                        "Notify blocked clients about force-load of %s",
+                        (char*)key->ptr);
+                    handleClientsBlockedOnSwappedKey(db,key);
+                }
             }
         }
         return val;
@@ -9536,7 +9553,7 @@ static void unlockThreadedIO(void) {
 
 /* Remove the specified object from the threaded I/O queue if still not
  * processed, otherwise make sure to flag it as canceled. */
-static void vmCancelThreadedIOJob(robj *o) {
+static redisDb *vmCancelThreadedIOJob(robj *o) {
     list *lists[3] = {
         server.io_newjobs,      /* 0 */
         server.io_processing,   /* 1 */
@@ -9607,7 +9624,7 @@ again:
                 else if (o->storage == REDIS_VM_SWAPPING)
                     o->storage = REDIS_VM_MEMORY;
                 unlockThreadedIO();
-                return;
+                return job->db;
             }
         }
     }
