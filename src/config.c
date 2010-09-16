@@ -1,4 +1,5 @@
 #include "redis.h"
+#include <string.h>
 
 /*-----------------------------------------------------------------------------
  * Config file parsing

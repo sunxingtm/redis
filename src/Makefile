@@ -8,12 +8,20 @@ OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)
   CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W -D__EXTENSIONS__ -D_XPG6
   CCLINK?= -ldl -lnsl -lsocket -lm -lpthread
+  DEBUG?= -g -rdynamic -ggdb   
 else
-  CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
-  CCLINK?= -lm -pthread
+  ifeq ($(uname_S),MINGW32_NT-6.0)
+    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -D__USE_MINGW_ANSI_STDIO=1
+    CCLINK?= -mthreads -lws2_32 -lpthread-2 -lmsvcrt
+    DEBUG?= -g -ggdb 
+  else
+    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+    CCLINK?= -lm -pthread
+    DEBUG?= -g -rdynamic -ggdb     
+  endif  
 endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
-DEBUG?= -g -rdynamic -ggdb 
+
 
 INSTALL_TOP= /usr/local
 INSTALL_BIN= $(INSTALL_TOP)/bin

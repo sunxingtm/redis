@@ -5,8 +5,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/wait.h>
+#ifdef _WIN32
+  #include "win32fixes.h"
+#else
+  #include <sys/resource.h>
+  #include <sys/wait.h>
+#endif
 
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */
@@ -21,9 +25,13 @@ void stopAppendOnly(void) {
     /* rewrite operation in progress? kill it, wait child exit */
     if (server.bgsavechildpid != -1) {
         int statloc;
-
+      
+#ifdef _WIN32
+        w32CeaseAndDesist(server.bgsavechildpid);
+#else
         if (kill(server.bgsavechildpid,SIGKILL) != -1)
             wait3(&statloc,0,NULL);
+#endif
         /* reset the buffer accumulating changes while the child saves */
         sdsfree(server.bgrewritebuf);
         server.bgrewritebuf = sdsempty();

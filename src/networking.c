@@ -1,6 +1,27 @@
 #include "redis.h"
 
-#include <sys/uio.h>
+#ifdef _WIN32 
+  #include "win32fixes.h"
+#else
+  #include <sys/uio.h>
+#endif
+
+#ifdef _WIN32 
+
+static struct iovec {
+        unsigned long iov_len;
+        char *iov_base;
+};
+
+static inline int writev(int sock, struct iovec *iov, int nvecs)
+{
+    DWORD ret;
+    if (WSASend(sock, (LPWSABUF)iov, nvecs, &ret, 0, NULL, NULL) == 0) {
+        return ret;
+    }
+    return -1;
+}
+#endif
 
 void *dupClientReplyValue(void *o) {
     incrRefCount((robj*)o);

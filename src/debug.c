@@ -1,7 +1,13 @@
 #include "redis.h"
 #include "sha1.h"   /* SHA1 is used for DEBUG DIGEST */
 
-#include <arpa/inet.h>
+#ifdef _WIN32 
+  #include <stdlib.h>
+  #include <string.h>  
+  #include "win32fixes.h"  
+#else
+  #include <arpa/inet.h>
+#endif
 
 /* ================================= Debugging ============================== */
 

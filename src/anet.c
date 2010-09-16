@@ -31,14 +31,18 @@
 #include "fmacros.h"
 
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
+#ifdef _WIN32
+  #include "win32fixes.h"
+#else
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <netinet/tcp.h>
+  #include <arpa/inet.h>
+  #include <netdb.h>  
+#endif
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
-#include <netdb.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -57,11 +61,23 @@ static void anetSetError(char *err, const char *fmt, ...)
 
 int anetNonBlock(char *err, int fd)
 {
-    int flags;
-
     /* Set the socket nonblocking.
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
      * interrupted by a signal. */
+#ifdef _WIN32 
+  // If iMode = 0, blocking is enabled; 
+  // If iMode != 0, non-blocking mode is enabled.
+  u_long iMode = 1;
+  if (!ioctlsocket(fd, FIONBIO, &iMode)) {
+    anetSetError(err, "fcntl(F_GETFL): %s\n", strerror(errno));
+    return ANET_ERR;    
+  };
+  
+  return ANET_OK;      
+  
+#else
+    int flags;
+  
     if ((flags = fcntl(fd, F_GETFL)) == -1) {
         anetSetError(err, "fcntl(F_GETFL): %s\n", strerror(errno));
         return ANET_ERR;
@@ -70,7 +86,9 @@ int anetNonBlock(char *err, int fd)
         anetSetError(err, "fcntl(F_SETFL,O_NONBLOCK): %s\n", strerror(errno));
         return ANET_ERR;
     }
-    return ANET_OK;
+    
+    return ANET_OK;    
+#endif
 }
 
 int anetTcpNoDelay(char *err, int fd)
@@ -107,9 +125,16 @@ int anetTcpKeepAlive(char *err, int fd)
 int anetResolve(char *err, char *host, char *ipbuf)
 {
     struct sockaddr_in sa;
-
-    sa.sin_family = AF_INET;
+#ifdef _WIN32  
+    long inAddress;
+  
+    sa.sin_family = AF_INET;  
+    inAddress = inet_addr(host);
+    if (inAddress == 0) {
+#else
+    sa.sin_family = AF_INET;      
     if (inet_aton(host, &sa.sin_addr) == 0) {
+#endif      
         struct hostent *he;
 
         he = gethostbyname(host);
@@ -119,6 +144,11 @@ int anetResolve(char *err, char *host, char *ipbuf)
         }
         memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
     }
+#ifdef _WIN32  
+    else {
+      sa.sin_addr.s_addr = inAddress;      
+    };
+#endif    
     strcpy(ipbuf,inet_ntoa(sa.sin_addr));
     return ANET_OK;
 }
@@ -140,7 +170,15 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
 
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
+    
+#ifdef _WIN32  
+    long inAddress;
+
+    inAddress = inet_addr(addr);
+    if (inAddress == 0) {
+#else    
     if (inet_aton(addr, &sa.sin_addr) == 0) {
+#endif
         struct hostent *he;
 
         he = gethostbyname(addr);
@@ -151,6 +189,12 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
         }
         memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
     }
+#ifdef _WIN32  
+    else {
+      sa.sin_addr.s_addr = inAddress;      
+    };
+#endif    
+    
     if (flags & ANET_CONNECT_NONBLOCK) {
         if (anetNonBlock(err,s) != ANET_OK)
             return ANET_ERR;
@@ -226,7 +270,15 @@ int anetTcpServer(char *err, int port, char *bindaddr)
     sa.sin_port = htons(port);
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bindaddr) {
+
+#ifdef _WIN32  
+        long inAddress;
+   
+        inAddress = inet_addr(bindaddr);
+        if (inAddress == 0) {
+#else    
         if (inet_aton(bindaddr, &sa.sin_addr) == 0) {
+#endif
             anetSetError(err, "Invalid bind address\n");
             close(s);
             return ANET_ERR;
@@ -249,7 +301,11 @@ int anetAccept(char *err, int serversock, char *ip, int *port)
 {
     int fd;
     struct sockaddr_in sa;
+#ifdef _WIN32 
+    int saLen;  
+#else
     unsigned int saLen;
+#endif
 
     while(1) {
         saLen = sizeof(sa);

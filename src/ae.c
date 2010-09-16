@@ -36,6 +36,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+  #include <winsock2.h>
+#endif
+
 #include "ae.h"
 #include "zmalloc.h"
 #include "config.h"
@@ -361,8 +365,8 @@ int aeWait(int fd, int mask, long long milliseconds) {
     FD_ZERO(&wfds);
     FD_ZERO(&efds);
 
-    if (mask & AE_READABLE) FD_SET(fd,&rfds);
-    if (mask & AE_WRITABLE) FD_SET(fd,&wfds);
+    if (mask & AE_READABLE) FD_SET((u_int) fd,&rfds);
+    if (mask & AE_WRITABLE) FD_SET((u_int) fd,&wfds);
     if ((retval = select(fd+1, &rfds, &wfds, &efds, &tv)) > 0) {
         if (FD_ISSET(fd,&rfds)) retmask |= AE_READABLE;
         if (FD_ISSET(fd,&wfds)) retmask |= AE_WRITABLE;

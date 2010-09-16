@@ -8,6 +8,11 @@
 #include "solarisfixes.h"
 #endif
 
+#if defined _WIN32
+  #include <string.h>
+  #include "win32fixes.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -198,7 +203,11 @@
 #define REDIS_OP_INTER 2
 
 /* We can print the stacktrace, so our assert is defined this way: */
-#define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#ifdef _WIN32
+  #define redisAssert(_e) ((_e)?0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#else
+  #define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#endif
 #define redisPanic(_e) _redisPanic(#_e,__FILE__,__LINE__),_exit(1)
 void _redisAssert(char *estr, char *file, int line);
 void _redisPanic(char *msg, char *file, int line);

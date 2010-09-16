@@ -36,17 +36,27 @@
 
 #include <time.h>
 #include <signal.h>
-#include <sys/wait.h>
+
+#ifdef _WIN32
+  #include <stdlib.h>
+  #include <string.h>   
+  #include <errno.h>  
+  #include <stdio.h>     
+  #include "win32fixes.h"  
+#else
+  #include <sys/wait.h>
+  #include <arpa/inet.h>
+  #include <sys/resource.h>
+  #include <sys/uio.h>
+#endif
+
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <arpa/inet.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/uio.h>
 #include <limits.h>
 #include <float.h>
 #include <math.h>
@@ -184,7 +194,6 @@ struct redisCommand readonlyCommandTable[] = {
 };
 
 /*============================ Utility functions ============================ */
-
 void redisLog(int level, const char *fmt, ...) {
     va_list ap;
     FILE *fp;
@@ -1164,7 +1173,11 @@ sds genRedisInfoString(void) {
         "connected_clients:%d\r\n"
         "connected_slaves:%d\r\n"
         "blocked_clients:%d\r\n"
+#ifdef _WIN32
+        "used_memory:%llu\r\n"  
+#else
         "used_memory:%zu\r\n"
+#endif
         "used_memory_human:%s\r\n"
         "mem_fragmentation_ratio:%.2f\r\n"
         "changes_since_last_save:%lld\r\n"
@@ -1384,6 +1397,10 @@ void createPidFile(void) {
 }
 
 void daemonize(void) {
+  
+#ifdef _WIN32 
+  redisLog(REDIS_WARNING,"Windows doesn't support daemonize. Start Redis as service");
+#else   
     int fd;
 
     if (fork() != 0) exit(0); /* parent exits */
@@ -1398,6 +1415,7 @@ void daemonize(void) {
         dup2(fd, STDERR_FILENO);
         if (fd > STDERR_FILENO) close(fd);
     }
+#endif
 }
 
 void version() {

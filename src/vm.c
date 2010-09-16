@@ -5,6 +5,11 @@
 #include <math.h>
 #include <signal.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+#endif
+
+
 /* Virtual Memory is composed mainly of two subsystems:
  * - Blocking Virutal Memory
  * - Threaded Virtual Memory I/O
@@ -43,7 +48,9 @@ void vmInit(void) {
     off_t totsize;
     int pipefds[2];
     size_t stacksize;
+#ifndef _WIN32  
     struct flock fl;
+#endif
 
     if (server.vm_max_threads != 0)
         zmalloc_enable_thread_safeness(); /* we need thread safe zmalloc() */
@@ -62,6 +69,16 @@ void vmInit(void) {
     server.vm_fd = fileno(server.vm_fp);
     /* Lock the swap file for writing, this is useful in order to avoid
      * another instance to use the same swap file for a config error. */
+#ifdef _WIN32
+       
+    // LockFile(pFile->h, RESERVED_BYTE, 0, 1, 0)
+    if(!LockFile((HANDLE) _get_osfhandle(server.vm_fd), (0x40000001), 0, 1, 0) ){
+        redisLog(REDIS_WARNING,
+            "Can't lock the swap file at '%s': %s. Make sure it is not used by another Redis instance.", server.vm_swap_file, strerror(errno));
+        exit(1);
+    }
+
+#else    
     fl.l_type = F_WRLCK;
     fl.l_whence = SEEK_SET;
     fl.l_start = fl.l_len = 0;
@@ -70,6 +87,7 @@ void vmInit(void) {
             "Can't lock the swap file at '%s': %s. Make sure it is not used by another Redis instance.", server.vm_swap_file, strerror(errno));
         exit(1);
     }
+#endif
     /* Initialize */
     server.vm_next_page = 0;
     server.vm_near_pages = 0;
@@ -800,8 +818,13 @@ void *IOThreadEntryPoint(void *arg) {
         lockThreadedIO();
         if (listLength(server.io_newjobs) == 0) {
             /* No new jobs in queue, exit. */
+#ifdef _WIN32                    
+            redisLog(REDIS_DEBUG,"Thread %ld exiting, nothing to do",
+                (long) pthread_self().p);
+#else          
             redisLog(REDIS_DEBUG,"Thread %ld exiting, nothing to do",
                 (long) pthread_self());
+#endif          
             server.io_active_threads--;
             unlockThreadedIO();
             return NULL;
@@ -814,8 +837,13 @@ void *IOThreadEntryPoint(void *arg) {
         listAddNodeTail(server.io_processing,j);
         ln = listLast(server.io_processing); /* We use ln later to remove it */
         unlockThreadedIO();
+#ifdef _WIN32                    
+        redisLog(REDIS_DEBUG,"Thread %ld got a new job (type %d): %p about key '%s'",
+            (long) pthread_self().p, j->type, (void*)j, (char*)j->key->ptr);
+#else          
         redisLog(REDIS_DEBUG,"Thread %ld got a new job (type %d): %p about key '%s'",
             (long) pthread_self(), j->type, (void*)j, (char*)j->key->ptr);
+#endif
 
         /* Process the Job */
         if (j->type == REDIS_IOJOB_LOAD) {
@@ -831,8 +859,14 @@ void *IOThreadEntryPoint(void *arg) {
         }
 
         /* Done: insert the job into the processed queue */
+#ifdef _WIN32                    
+        redisLog(REDIS_DEBUG,"Thread %ld completed the job: %p (key %s)",
+            (long) pthread_self().p, (void*)j, (char*)j->key->ptr);
+#else          
         redisLog(REDIS_DEBUG,"Thread %ld completed the job: %p (key %s)",
             (long) pthread_self(), (void*)j, (char*)j->key->ptr);
+#endif        
+        
         lockThreadedIO();
         listDelNode(server.io_processing,ln);
         listAddNodeTail(server.io_processed,j);
@@ -925,7 +959,13 @@ int vmSwapObjectThreaded(robj *key, robj *val, redisDb *db) {
     j->id = j->val = val;
     incrRefCount(val);
     j->canceled = 0;
+#ifdef _WIN32                  
+    j->thread.p = (void *) -1;
+    j->thread.x = 0;  
+#else
     j->thread = (pthread_t) -1;
+#endif
+  
     val->storage = REDIS_VM_SWAPPING;
 
     lockThreadedIO();
@@ -996,7 +1036,12 @@ int waitForSwappedKey(redisClient *c, robj *key) {
         j->page = vp->page;
         j->val = NULL;
         j->canceled = 0;
+#ifdef _WIN32      
+        j->thread.p = (void *) -1;
+        j->thread.x = 0;  
+#else      
         j->thread = (pthread_t) -1;
+#endif      
         lockThreadedIO();
         queueIOJob(j);
         unlockThreadedIO();
