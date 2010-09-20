@@ -24,12 +24,11 @@ void stopAppendOnly(void) {
     server.appendonly = 0;
     /* rewrite operation in progress? kill it, wait child exit */
     if (server.bgsavechildpid != -1) {
-        int statloc;
-      
 #ifdef _WIN32
         w32CeaseAndDesist(server.bgsavechildpid);
 #else
-        if (kill(server.bgsavechildpid,SIGKILL) != -1)
+      int statloc;
+      if (kill(server.bgsavechildpid,SIGKILL) != -1)
             wait3(&statloc,0,NULL);
 #endif
         /* reset the buffer accumulating changes while the child saves */

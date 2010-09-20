@@ -37,7 +37,7 @@
 #include <stdlib.h>
 
 #ifdef _WIN32
-  #include <winsock2.h>
+  #include "win32fixes.h"
 #endif
 
 #include "ae.h"

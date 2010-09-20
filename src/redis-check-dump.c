@@ -3,9 +3,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
+#ifdef _WIN32
+  #include <inttypes.h>
+  #include "win32fixes.h"
+#else
+  #include <sys/mman.h>
+  #include <arpa/inet.h>  
+#endif
 #include <string.h>
-#include <arpa/inet.h>
 #include <stdint.h>
 #include <limits.h>
 #include "lzf.h"
@@ -232,7 +237,11 @@ char *loadIntegerObject(int enctype) {
     /* convert val into string */
     char *buf;
     buf = malloc(sizeof(char) * 128);
+#ifdef _WIN32
+    sprintf(buf, "%"PRIu64, val);    
+#else    
     sprintf(buf, "%lld", val);
+#endif
     return buf;
 }
 
@@ -496,15 +505,25 @@ void printCentered(int indent, int width, char* body) {
 
 void printValid(uint64_t ops, uint64_t bytes) {
     char body[80];
+#ifdef _WIN32  
+    sprintf(body, "Processed %"PRIu64" valid opcodes (in %"PRIu64" bytes)",
+        (unsigned long long) ops, (unsigned long long) bytes);
+#else
     sprintf(body, "Processed %llu valid opcodes (in %llu bytes)",
         (unsigned long long) ops, (unsigned long long) bytes);
+#endif  
     printCentered(4, 80, body);
 }
 
 void printSkipped(uint64_t bytes, uint64_t offset) {
     char body[80];
-    sprintf(body, "Skipped %llu bytes (resuming at 0x%08llx)",
+#ifdef _WIN32    
+    sprintf(body, "Skipped %"PRIu64" bytes (resuming at 0x%08"PRIX64")",
         (unsigned long long) bytes, (unsigned long long) offset);
+#else  
+    sprintf(body, "Skipped %"PRIu64" bytes (resuming at 0x%08llx)",
+        (unsigned long long) bytes, (unsigned long long) offset);
+#endif    
     printCentered(4, 80, body);
 }
 
@@ -538,7 +557,11 @@ void printErrorStack(entry *e) {
 
     /* display error stack */
     for (i = 0; i < errors.level; i++) {
+#ifdef _WIN32
+        printf("0x%08lx - %s\n", (long unsigned int)errors.offset[i], errors.error[i]);      
+#else      
         printf("0x%08lx - %s\n", errors.offset[i], errors.error[i]);
+#endif      
     }
 }
 
@@ -612,8 +635,13 @@ void process() {
     /* print summary on errors */
     if (num_errors) {
         printf("\n");
+#ifdef _WIN32  
+        printf("Total unprocessable opcodes: %"PRIu64"\n",
+            (unsigned long long) num_errors);      
+#else      
         printf("Total unprocessable opcodes: %llu\n",
-            (unsigned long long) num_errors);
+            (unsigned long long) num_errors);      
+#endif      
     }
 }
 

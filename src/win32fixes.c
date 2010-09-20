@@ -1,6 +1,26 @@
 #ifdef _WIN32
 
 #include <windows.h>
+#include <process.h>
+#include <errno.h>
+#include <winsock2.h>
+#include "win32fixes.h"
+
+int pthread_sigmask(int how, const sigset_t *set, sigset_t *oset) 
+{
+    switch (how) {
+      case SIG_BLOCK:
+      case SIG_UNBLOCK:
+      case SIG_SETMASK:
+           break;
+      default:
+        errno = EINVAL;
+        return -1;
+  }
+
+  errno = ENOSYS;
+  return -1;
+}
 
 int w32CeaseAndDesist(pid_t pid)
 {
@@ -9,7 +29,7 @@ int w32CeaseAndDesist(pid_t pid)
   h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
 
   /* invalid process; no access rights; etc   */  
-  if ((h == NULL) || (h == E_INVALID_HANDLE))
+  if (h == NULL)
     return errno = EINVAL; 
   
   if (!TerminateProcess(h, 127)) 
@@ -30,7 +50,7 @@ int kill(pid_t pid, int sig)
     HANDLE h = OpenProcess(PROCESS_TERMINATE, 0, pid);  
     if (!TerminateProcess(h, 127))
     {
-      errno = err_win_to_posix(GetLastError());  
+      errno = EINVAL; /* GetLastError() */
       CloseHandle(h);            
       return -1;
     };
@@ -78,56 +98,9 @@ int fsync (int fd)
   return 0;
 }
 
-
-#define waitpid(pid,statusp,options) _cwait (statusp, pid, WAIT_CHILD)
-#define WAIT_T int
-#define WTERMSIG(x) ((x) & 0xff) /* or: SIGABRT ?? */
-#define WCOREDUMP(x) 0
-#define WEXITSTATUS(x) (((x) >> 8) & 0xff) /* or: (x) ?? */
-#define WIFSIGNALED(x) (WTERMSIG (x) != 0) /* or: ((x) == 3) ?? */
-#define WIFEXITED(x) (WTERMSIG (x) == 0) /* or: ((x) != 3) ?? */
-#define WIFSTOPPED(x) 0
-
-pid_t wait3(int *stat_loc, int options, struct rusage *rusage); {
- 
+pid_t wait3(int *stat_loc, int options, void *rusage) 
+{
   return waitpid((pid_t) -1, 0, WAIT_FLAGS);
-}
-
-int fork(void) {
-  
-  PROCESS_INFORMATION procinfo;
-  STARTUPINFO sinfo;
-  OFBitmanipTemplate<char>::zeroMem((char *)&sinfo, sizeof(sinfo));
-  sinfo.cb = sizeof(sinfo);
-
-  // execute command (Attention: Do not pass DETACHED_PROCESS as sixth argument to the below
-  // called function because in such a case the execution of batch-files is not going to work.)
-  if( !CreateProcess(
-      NULL, 
-      cmd.c_str(), 
-      NULL, 
-      NULL, 
-      0,
-      0, 
-      NULL, 
-      NULL, 
-      &sinfo, 
-      &procinfo) )
-  {
-    fprintf( stderr, "storescp: Error while executing command '%s'.\n" , cmd.c_str() );
-  };
-
-  if (opt_execSync)
-  {
-      // Wait until child process exits (makes execution synchronous).
-      WaitForSingleObject(procinfo.hProcess, INFINITE);
-  }
-
-  // Close process and thread handles to avoid resource leak
-  CloseHandle(procinfo.hProcess);
-  CloseHandle(procinfo.hThread);
-  
-  
 }
 
 int rpl_setsockopt(int socket, int level, int optname, const void *optval,
@@ -136,7 +109,50 @@ int rpl_setsockopt(int socket, int level, int optname, const void *optval,
   return (setsockopt)(socket, level, optname, optval, optlen);
 }               
 
+/* mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0); */
+void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) 
+{
+	HANDLE h;
+	void *data;
 
+	if ((flags != MAP_SHARED) || (prot != PROT_READ))
+    {
+	  /*  Not supported  in this port */
+      return MAP_FAILED;
+    };    
+    
+	h = CreateFileMapping(
+        (HANDLE)_get_osfhandle(fd), 
+        NULL, 
+        PAGE_READONLY, 
+        0, 
+        0, 
+        NULL);
+
+	if (!h)
+		return MAP_FAILED;
+
+	data = MapViewOfFileEx(
+        h, 
+        FILE_MAP_READ, 
+        0, 
+        0, 
+        length,
+        start);
+
+	CloseHandle(h);
+    
+    if (!data) 
+      return MAP_FAILED;
+
+	return data;
+}
+
+
+int munmap(void *start, size_t length)
+{
+	return !UnmapViewOfFile(start);  
+}
 
 /*
 int inet_aton(const char *cp_arg, struct in_addr *addr)
@@ -226,6 +242,43 @@ int inet_aton(const char *cp_arg, struct in_addr *addr)
 	return (1);
 }
 */
+
+int fork(void) 
+{
+  return ENOSYS;
+/*   PROCESS_INFORMATION procinfo;
+  STARTUPINFO sinfo;
+  OFBitmanipTemplate<char>::zeroMem((char *)&sinfo, sizeof(sinfo));
+  sinfo.cb = sizeof(sinfo);
+
+  // execute command (Attention: Do not pass DETACHED_PROCESS as sixth argument to the below
+  // called function because in such a case the execution of batch-files is not going to work.)
+  if( !CreateProcess(
+      NULL, 
+      cmd.c_str(), 
+      NULL, 
+      NULL, 
+      0,
+      0, 
+      NULL, 
+      NULL, 
+      &sinfo, 
+      &procinfo) )
+  {
+    fprintf( stderr, "storescp: Error while executing command '%s'.\n" , cmd.c_str() );
+  };
+
+  if (opt_execSync)
+  {
+      // Wait until child process exits (makes execution synchronous).
+      WaitForSingleObject(procinfo.hProcess, INFINITE);
+  }
+
+  // Close process and thread handles to avoid resource leak
+  CloseHandle(procinfo.hProcess);
+  CloseHandle(procinfo.hThread);
+ */
+ }
 
 
 #endif

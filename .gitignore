@@ -18,3 +18,9 @@ SHORT_TERM_TODO
 redis.conf.*
 SciTE.session
 vars.bat
+*.exe
+*.dll
+*.depend
+*.layout
+*.cbp
+*.script

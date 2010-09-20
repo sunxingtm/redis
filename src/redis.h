@@ -10,6 +10,7 @@
 
 #if defined _WIN32
   #include <string.h>
+  #include <stdio.h>       
   #include "win32fixes.h"
 #endif
 
@@ -204,7 +205,7 @@
 
 /* We can print the stacktrace, so our assert is defined this way: */
 #ifdef _WIN32
-  #define redisAssert(_e) ((_e)?0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+  #define redisAssert(_e) ((_e) ? (void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
 #else
   #define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
 #endif

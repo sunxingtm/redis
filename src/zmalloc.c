@@ -27,6 +27,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifdef _WIN32 
+  #include <inttypes.h>
+  #include "win32fixes.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,8 +74,13 @@ static int zmalloc_thread_safe = 0;
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void zmalloc_oom(size_t size) {
+#ifdef _WIN32
+    fprintf(stderr, "zmalloc: Out of memory trying to allocate %"PRIu64" bytes\n",
+        (long long unsigned int) size);
+#else  
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
+#endif  
     fflush(stderr);
     abort();
 }

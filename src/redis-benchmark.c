@@ -39,6 +39,10 @@
 #include <signal.h>
 #include <assert.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+#endif
+
 #include "ae.h"
 #include "anet.h"
 #include "sds.h"
@@ -214,8 +218,12 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask)
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
     REDIS_NOTUSED(mask);
-
+  
+#ifdef _WIN32
+    nread = recv(c->fd, buf, 1024,0);  
+#else  
     nread = read(c->fd, buf, 1024);
+#endif  
     if (nread == -1) {
         fprintf(stderr, "Reading from socket: %s\n", strerror(errno));
         freeClient(c);
@@ -320,7 +328,11 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask)
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
         int len = sdslen(c->obuf) - c->written;
+#ifdef _WIN32      
+        int nwritten = send(c->fd, ptr, len,0);      
+#else      
         int nwritten = write(c->fd, ptr, len);
+#endif      
         if (nwritten == -1) {
             if (errno != EPIPE)
                 fprintf(stderr, "Writing to socket: %s\n", strerror(errno));

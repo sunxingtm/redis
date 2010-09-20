@@ -71,15 +71,20 @@
 
 #include "fmacros.h"
 
-#include <termios.h>
-#include <unistd.h>
+#ifdef _WIN32 
+  #include "win32fixes.h"
+#else
+  #include <termios.h>
+  #include <unistd.h>
+  #include <sys/ioctl.h>  
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <sys/ioctl.h>
 #include <unistd.h>
 #include <string.h>
 
@@ -87,9 +92,12 @@
 #define LINENOISE_MAX_LINE 4096
 static char *unsupported_term[] = {"dumb","cons25",NULL};
 
+#ifndef _WIN32 
 static struct termios orig_termios; /* in order to restore at exit */
 static int rawmode = 0; /* for atexit() function to check if restore is needed*/
 static int atexit_registered = 0; /* register atexit just 1 time */
+#endif
+
 static int history_max_len = LINENOISE_DEFAULT_HISTORY_MAX_LEN;
 static int history_len = 0;
 char **history = NULL;
@@ -118,6 +126,8 @@ static void freeHistory(void) {
 }
 
 static int enableRawMode(int fd) {
+  
+#ifndef _WIN32 
     struct termios raw;
 
     if (!isatty(STDIN_FILENO)) goto fatal;
@@ -145,17 +155,22 @@ static int enableRawMode(int fd) {
     /* put terminal in raw mode after flushing */
     if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
     rawmode = 1;
+
     return 0;
 
 fatal:
+#endif              
+
     errno = ENOTTY;
     return -1;
 }
 
 static void disableRawMode(int fd) {
+#ifndef _WIN32 
     /* Don't even check the return value as it's too late. */
     if (rawmode && tcsetattr(fd,TCSAFLUSH,&orig_termios) != -1)
         rawmode = 0;
+#endif    
 }
 
 /* At exit we'll try to fix the terminal to the initial conditions. */
@@ -165,10 +180,14 @@ static void linenoiseAtExit(void) {
 }
 
 static int getColumns(void) {
+#ifndef _WIN32  
     struct winsize ws;
 
     if (ioctl(1, TIOCGWINSZ, &ws) == -1) return 80;
     return ws.ws_col;
+#else
+    return 80;  
+#endif  
 }
 
 static void refreshLine(int fd, const char *prompt, char *buf, size_t len, size_t pos, size_t cols) {

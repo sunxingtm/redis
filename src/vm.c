@@ -60,6 +60,7 @@ void vmInit(void) {
     if ((server.vm_fp = fopen(server.vm_swap_file,"r+b")) == NULL) {
         server.vm_fp = fopen(server.vm_swap_file,"w+b");
     }
+
     if (server.vm_fp == NULL) {
         redisLog(REDIS_WARNING,
             "Can't open the swap file: %s. Exiting.",
@@ -850,9 +851,13 @@ void *IOThreadEntryPoint(void *arg) {
             vmpointer *vp = (vmpointer*)j->id;
             j->val = vmReadObjectFromSwap(j->page,vp->vtype);
         } else if (j->type == REDIS_IOJOB_PREPARE_SWAP) {
+#ifdef _WIN32                    
+            j->pages = rdbSavedObjectPages(j->val,NULL);          
+#else          
             FILE *fp = fopen("/dev/null","w+");
             j->pages = rdbSavedObjectPages(j->val,fp);
             fclose(fp);
+#endif          
         } else if (j->type == REDIS_IOJOB_DO_SWAP) {
             if (vmWriteObjectOnSwap(j->val,j->page) == REDIS_ERR)
                 j->canceled = 1;

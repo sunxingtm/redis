@@ -39,6 +39,10 @@
 #include <errno.h>
 #include <sys/stat.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+#endif
+
 #include "anet.h"
 #include "sds.h"
 #include "adlist.h"
@@ -96,7 +100,11 @@ static sds cliReadLine(int fd) {
         char c;
         ssize_t ret;
 
+#ifdef _WIN32
+        ret = recv(fd,&c,1,0);      
+#else      
         ret = read(fd,&c,1);
+#endif      
         if (ret <= 0) {
             sdsfree(line);
             return NULL;
@@ -501,7 +509,7 @@ int main(int argc, char **argv) {
         char *authargv[2];
         int dbnum = config.dbnum;
 
-        /* We need to save the real configured database number and set it to
+    /* We need to save the real configured database number and set it to
          * zero here, otherwise cliSendCommand() will try to perform the
          * SELECT command before the authentication, and it will fail. */
         config.dbnum = 0;

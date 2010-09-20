@@ -1,5 +1,9 @@
 #include "redis.h"
 
+#ifdef _WIN32
+  #include <stdio.h>
+#endif
+
 #include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -118,7 +122,11 @@ int syncWrite(int fd, char *ptr, ssize_t size, int timeout) {
     timeout++;
     while(size) {
         if (aeWait(fd,AE_WRITABLE,1000) & AE_WRITABLE) {
+#ifdef _WIN32
+            nwritten = send(fd,ptr,size,0);          
+#else          
             nwritten = write(fd,ptr,size);
+#endif          
             if (nwritten == -1) return -1;
             ptr += nwritten;
             size -= nwritten;
@@ -253,6 +261,16 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
          * operations) will never be smaller than the few bytes we need. */
         sds bulkcount;
 
+#ifdef _WIN32
+        bulkcount = sdscatprintf(sdsempty(),"$%"PRIu64"\r\n",(unsigned long long)
+            slave->repldbsize);
+        if (send(fd,bulkcount,sdslen(bulkcount),0) != (signed)sdslen(bulkcount))
+        {
+            sdsfree(bulkcount);
+            freeClient(slave);
+            return;
+        }
+#else
         bulkcount = sdscatprintf(sdsempty(),"$%lld\r\n",(unsigned long long)
             slave->repldbsize);
         if (write(fd,bulkcount,sdslen(bulkcount)) != (signed)sdslen(bulkcount))
@@ -261,6 +279,7 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
             freeClient(slave);
             return;
         }
+#endif      
         sdsfree(bulkcount);
     }
     lseek(slave->repldbfd,slave->repldboff,SEEK_SET);
@@ -271,12 +290,21 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
         freeClient(slave);
         return;
     }
+#ifdef _WIN32
+    if ((nwritten = send(fd,buf,buflen,0)) == -1) {
+        redisLog(REDIS_VERBOSE,"Write error sending DB to slave: %s",
+            strerror(errno));
+        freeClient(slave);
+        return;
+    }
+#else    
     if ((nwritten = write(fd,buf,buflen)) == -1) {
         redisLog(REDIS_VERBOSE,"Write error sending DB to slave: %s",
             strerror(errno));
         freeClient(slave);
         return;
     }
+#endif    
     slave->repldboff += nwritten;
     if (slave->repldboff == slave->repldbsize) {
         close(slave->repldbfd);

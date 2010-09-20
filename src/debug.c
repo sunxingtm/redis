@@ -3,6 +3,7 @@
 
 #ifdef _WIN32 
   #include <stdlib.h>
+  #include <stdio.h>  
   #include <string.h>  
   #include "win32fixes.h"  
 #else
@@ -219,14 +220,23 @@ void debugCommand(redisClient *c) {
             strenc = strEncoding(val->encoding);
             addReplySds(c,sdscatprintf(sdsempty(),
                 "+Value at:%p refcount:%d "
+#ifdef _WIN32  
+                "encoding:%s serializedlength:%"PRIu64"\r\n",                                     
+#else                                               
                 "encoding:%s serializedlength:%lld\r\n",
+#endif                                     
                 (void*)val, val->refcount,
                 strenc, (long long) rdbSavedObjectLen(val,NULL)));
         } else {
             vmpointer *vp = (vmpointer*) val;
             addReplySds(c,sdscatprintf(sdsempty(),
+#ifdef _WIN32
+                "+Value swapped at: page %"PRIu64" "
+                "using %"PRIu64" pages\r\n",
+#else          
                 "+Value swapped at: page %llu "
                 "using %llu pages\r\n",
+#endif
                 (unsigned long long) vp->page,
                 (unsigned long long) vp->usedpages));
         }

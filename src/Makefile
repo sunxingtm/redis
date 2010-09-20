@@ -11,9 +11,11 @@ ifeq ($(uname_S),SunOS)
   DEBUG?= -g -rdynamic -ggdb   
 else
   ifeq ($(uname_S),MINGW32_NT-6.0)
-    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -D__USE_MINGW_ANSI_STDIO=1
-    CCLINK?= -mthreads -lws2_32 -lpthread-2 -lmsvcrt
+    CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+    CCLINK?= -mthreads
+    LIBS?= -lws2_32 -lpthread
     DEBUG?= -g -ggdb 
+    CC=gcc
   else
     CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
     CCLINK?= -lm -pthread
@@ -27,11 +29,11 @@ PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
 INSTALL= cp -p
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o
-BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
-CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
-CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
-CHECKAOFOBJ = redis-check-aof.o
+OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o
+BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
+CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
+CHECKDUMPOBJ = win32fixes.o redis-check-dump.o lzf_c.o lzf_d.o
+CHECKAOFOBJ = win32fixes.o redis-check-aof.o
 
 PRGNAME = redis-server
 BENCHPRGNAME = redis-benchmark
@@ -107,22 +109,22 @@ zipmap.o: zipmap.c zmalloc.h
 zmalloc.o: zmalloc.c config.h
 
 redis-server: $(OBJ)
-	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ)
+	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(LIBS)
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
 
 redis-benchmark: $(BENCHOBJ)
-	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ)
+	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) $(LIBS)
 
 redis-cli: $(CLIOBJ)
-	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ)
+	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) $(LIBS)
 
 redis-check-dump: $(CHECKDUMPOBJ)
-	$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ)
+	$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(LIBS)
 
 redis-check-aof: $(CHECKAOFOBJ)
-	$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ)
+	$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(LIBS)
 
 .c.o:
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<

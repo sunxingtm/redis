@@ -13,6 +13,10 @@
  * number is greater than 253, the length will occupy 5 bytes, where
  * the extra bytes contain an unsigned integer to hold the length.
  */
+#ifdef _WIN32 
+  #include <inttypes.h>
+  #include "win32fixes.h"  
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -560,12 +564,20 @@ void ziplistRepr(unsigned char *zl) {
     p = ZIPLIST_ENTRY_HEAD(zl);
     while(*p != ZIP_END) {
         entry = zipEntry(p);
+#ifdef _WIN32
+        printf("{offset %ld, header %u, payload %u} ",(long int)(p-zl),entry.headersize,entry.len);      
+#else      
         printf("{offset %ld, header %u, payload %u} ",p-zl,entry.headersize,entry.len);
+#endif      
         p += entry.headersize;
         if (entry.encoding == ZIP_ENC_RAW) {
             fwrite(p,entry.len,1,stdout);
         } else {
+#ifdef _WIN32          
+            printf("%"PRId64, (long long) zipLoadInteger(p,entry.encoding));          
+#else          
             printf("%lld", (long long) zipLoadInteger(p,entry.encoding));
+#endif          
         }
         printf("\n");
         p += entry.len;

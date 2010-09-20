@@ -1,14 +1,14 @@
 #include "redis.h"
 
-#ifdef _WIN32 
+#ifdef _WIN32
   #include "win32fixes.h"
 #else
   #include <sys/uio.h>
 #endif
 
-#ifdef _WIN32 
+#ifdef _WIN32
 
-static struct iovec {
+struct iovec {
         unsigned long iov_len;
         char *iov_base;
 };
@@ -207,10 +207,16 @@ void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (server.maxclients && listLength(server.clients) > server.maxclients) {
         char *err = "-ERR max number of clients reached\r\n";
 
-        /* That's a best effort error message, don't check write errors */
+#ifdef _WIN32
+        if (send(c->fd,err,strlen(err),0) == -1) {
+        }
+#else
+       /* That's a best effort error message, don't check write errors */
         if (write(c->fd,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
+#endif        
+        
         freeClient(c);
         return;
     }
@@ -371,7 +377,11 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             /* Don't reply to a master */
             nwritten = objlen - c->sentlen;
         } else {
+#ifdef _WIN32
+            nwritten = send( fd, ((char*)o->ptr)+c->sentlen, objlen - c->sentlen, 0);
+#else
             nwritten = write(fd, ((char*)o->ptr)+c->sentlen, objlen - c->sentlen);
+#endif
             if (nwritten <= 0) break;
         }
         c->sentlen += nwritten;
@@ -607,7 +617,11 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(mask);
 
+#ifdef _WIN32
+    nread = recv(fd, buf, REDIS_IOBUF_LEN, 0);
+#else
     nread = read(fd, buf, REDIS_IOBUF_LEN);
+#endif
     if (nread == -1) {
         if (errno == EAGAIN) {
             nread = 0;
