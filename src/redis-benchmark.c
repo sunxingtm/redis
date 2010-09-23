@@ -121,7 +121,11 @@ static void freeClient(client c) {
     aeDeleteFileEvent(config.el,c->fd,AE_READABLE);
     sdsfree(c->ibuf);
     sdsfree(c->obuf);
+#ifdef _WIN32
+    closesocket(c->fd);  
+#else  
     close(c->fd);
+#endif  
     zfree(c);
     config.liveclients--;
     ln = listSearchKey(config.clients,c);
@@ -705,5 +709,8 @@ int main(int argc, char **argv) {
         printf("\n");
     } while(config.loop);
 
+#ifdef _WIN32
+    WSACleanup();
+#endif  
     return 0;
 }

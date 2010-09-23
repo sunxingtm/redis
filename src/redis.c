@@ -38,15 +38,16 @@
 
 #ifdef _WIN32
   #include <stdlib.h>
-  #include <string.h>   
-  #include <errno.h>  
-  #include <stdio.h>     
-  #include "win32fixes.h"  
+  #include <string.h>
+  #include <errno.h>
+  #include <stdio.h>
+  #include "win32fixes.h"
 #else
   #include <sys/wait.h>
   #include <arpa/inet.h>
   #include <sys/resource.h>
   #include <sys/uio.h>
+  #include <pthread.h>
 #endif
 
 #include <errno.h>
@@ -59,8 +60,7 @@
 #include <limits.h>
 #include <float.h>
 #include <math.h>
-#include <pthread.h>
-#include <sys/resource.h>
+
 
 /* Our shared "common" objects */
 
@@ -228,6 +228,24 @@ void oom(const char *msg) {
     sleep(1);
     abort();
 }
+
+#ifdef _WIN32
+/* Misc Windows house keeping */
+void win32Cleanup() {
+
+    /* Clean critical sections */
+    if (server.vm_enabled) {
+        pthread_mutex_destroy(&server.io_mutex);
+        pthread_mutex_destroy(&server.obj_freelist_mutex);
+        pthread_mutex_destroy(&server.io_swapfile_mutex);
+    }
+
+    zmalloc_free_used_memory_mutex();
+
+    /* Clear winsocks */
+    WSACleanup();
+}
+#endif /* _WIN32 */
 
 /*====================== Hash table type implementation  ==================== */
 
@@ -515,7 +533,14 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
+#ifdef _WIN32
+        if (prepareForShutdown() == REDIS_OK) {
+            win32Cleanup();
+            exit(0);
+        }
+#else
         if (prepareForShutdown() == REDIS_OK) exit(0);
+#endif
         redisLog(REDIS_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
     }
 
@@ -527,11 +552,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         used = dictSize(server.db[j].dict);
         vkeys = dictSize(server.db[j].expires);
         if (!(loops % 50) && (used || vkeys)) {
-#ifdef _WIN32 
-            redisLog(REDIS_VERBOSE,"DB %d: %"PRIu64" keys (%"PRIu64" volatile) in %"PRIu64" slots HT.",j,used,vkeys,size);          
-#else          
             redisLog(REDIS_VERBOSE,"DB %d: %lld keys (%lld volatile) in %lld slots HT.",j,used,vkeys,size);
-#endif          
             /* dictPrintStats(server.dict); */
         }
     }
@@ -552,10 +573,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         redisLog(REDIS_VERBOSE,"%d clients connected (%d slaves), %zu bytes in use",
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-            #ifdef _WIN32 
+            #ifdef _WIN32
             (long long unsigned int) zmalloc_used_memory()
             #else
-            zmalloc_used_memory()      
+            zmalloc_used_memory()
             #endif
         );
     }
@@ -751,11 +772,11 @@ void initServerConfig() {
     server.blpop_blocked_clients = 0;
     server.maxmemory = 0;
     server.vm_enabled = 0;
-#ifdef _WIN32    
+#ifdef _WIN32
     server.vm_swap_file = _tempnam("c:\\tmp", "redis-vm-");
 #else
     server.vm_swap_file = zstrdup("/tmp/redis-%p.vm");
-#endif    
+#endif
     server.vm_page_size = 256;          /* 256 bytes per page */
     server.vm_pages = 1024*1024*100;    /* 104 millions of pages */
     server.vm_max_memory = 1024LL*1024*1024*1; /* 1 GB of RAM */
@@ -803,13 +824,13 @@ void initServer() {
         redisLog(REDIS_WARNING, "Can't open NUL device: %s", server.neterr);
         exit(1);
     }
-#else  
+#else
     server.devnull = fopen("/dev/null","w");
     if (server.devnull == NULL) {
         redisLog(REDIS_WARNING, "Can't open /dev/null: %s", server.neterr);
         exit(1);
     }
-#endif    
+#endif
     server.clients = listCreate();
     server.slaves = listCreate();
     server.monitors = listCreate();
@@ -820,6 +841,9 @@ void initServer() {
     server.fd = anetTcpServer(server.neterr, server.port, server.bindaddr);
     if (server.fd == -1) {
         redisLog(REDIS_WARNING, "Opening TCP port: %s", server.neterr);
+#ifdef _WIN32
+        win32Cleanup();
+#endif
         exit(1);
     }
     for (j = 0; j < server.dbnum; j++) {
@@ -856,6 +880,9 @@ void initServer() {
         if (server.appendfd == -1) {
             redisLog(REDIS_WARNING, "Can't open the append-only file: %s",
                 strerror(errno));
+#ifdef _WIN32
+            win32Cleanup();
+#endif
             exit(1);
         }
     }
@@ -1156,8 +1183,8 @@ void bytesToHuman(char *s, unsigned long long n) {
 
     if (n < 1024) {
         /* Bytes */
-#ifdef _WIN32       
-        sprintf(s,"%"PRIu64"B",n);      
+#ifdef _WIN32
+        sprintf(s,"%"PRIu64"B",n);
 #else
         sprintf(s,"%lluB",n);
 #endif
@@ -1182,10 +1209,12 @@ sds genRedisInfoString(void) {
     time_t uptime = time(NULL)-server.stat_starttime;
     int j;
     char hmem[64];
+#ifndef _WIN32
     struct rusage self_ru, c_ru;
 
     getrusage(RUSAGE_SELF, &self_ru);
     getrusage(RUSAGE_CHILDREN, &c_ru);
+#endif
 
     bytesToHuman(hmem,zmalloc_used_memory());
     info = sdscatprintf(sdsempty(),
@@ -1197,29 +1226,31 @@ sds genRedisInfoString(void) {
         "process_id:%ld\r\n"
         "uptime_in_seconds:%ld\r\n"
         "uptime_in_days:%ld\r\n"
+#ifndef _WIN32
         "used_cpu_sys:%.2f\r\n"
         "used_cpu_user:%.2f\r\n"
         "used_cpu_sys_childrens:%.2f\r\n"
         "used_cpu_user_childrens:%.2f\r\n"
+#endif
         "connected_clients:%d\r\n"
         "connected_slaves:%d\r\n"
         "blocked_clients:%d\r\n"
 #ifdef _WIN32
-        "used_memory:%"PRIu64"\r\n"  
+        "used_memory:%"PRIu64"\r\n"
 #else
         "used_memory:%zu\r\n"
 #endif
         "used_memory_human:%s\r\n"
         "mem_fragmentation_ratio:%.2f\r\n"
 #ifdef _WIN32
-        "changes_since_last_save:%"PRIu64"\r\n"     
+        "changes_since_last_save:%"PRIu64"\r\n"
 #else
         "changes_since_last_save:%lld\r\n"
-#endif        
+#endif
         "bgsave_in_progress:%d\r\n"
         "last_save_time:%ld\r\n"
         "bgrewriteaof_in_progress:%d\r\n"
-#ifdef _WIN32        
+#ifdef _WIN32
         "total_connections_received:%"PRIu64"\r\n"
         "total_commands_processed:%"PRIu64"\r\n"
         "expired_keys:%"PRIu64"\r\n"
@@ -1231,7 +1262,7 @@ sds genRedisInfoString(void) {
         "expired_keys:%lld\r\n"
         "hash_max_zipmap_entries:%zu\r\n"
         "hash_max_zipmap_value:%zu\r\n"
-#endif        
+#endif
         "pubsub_channels:%ld\r\n"
         "pubsub_patterns:%u\r\n"
         "vm_enabled:%d\r\n"
@@ -1244,14 +1275,16 @@ sds genRedisInfoString(void) {
         (long) getpid(),
         uptime,
         uptime/(3600*24),
+#ifndef _WIN32
         (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000,
         (float)self_ru.ru_stime.tv_sec+(float)self_ru.ru_stime.tv_usec/1000000,
         (float)c_ru.ru_utime.tv_sec+(float)c_ru.ru_utime.tv_usec/1000000,
         (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
+#endif
         listLength(server.clients)-listLength(server.slaves),
         listLength(server.slaves),
         server.blpop_blocked_clients,
-        #ifdef _WIN32 
+        #ifdef _WIN32
           (long long unsigned int) zmalloc_used_memory(),
         #else
           zmalloc_used_memory(),
@@ -1265,12 +1298,12 @@ sds genRedisInfoString(void) {
         server.stat_numconnections,
         server.stat_numcommands,
         server.stat_expiredkeys,
-        #ifdef _WIN32 
+        #ifdef _WIN32
           (long long unsigned int) server.hash_max_zipmap_entries,
-        #else  
+        #else
            server.hash_max_zipmap_entries,
-        #endif 
-        #ifdef _WIN32 
+        #endif
+        #ifdef _WIN32
           (long long unsigned int) server.hash_max_zipmap_value,
         #else
           server.hash_max_zipmap_value,
@@ -1296,7 +1329,7 @@ sds genRedisInfoString(void) {
     if (server.vm_enabled) {
         lockThreadedIO();
         info = sdscatprintf(info,
-#ifdef _WIN32      
+#ifdef _WIN32
             "vm_conf_max_memory:%"PRIu64"\r\n"
             "vm_conf_page_size:%"PRIu64"\r\n"
             "vm_conf_pages:%"PRIu64"\r\n"
@@ -1346,7 +1379,7 @@ sds genRedisInfoString(void) {
             info = sdscatprintf(info, "db%d:keys=%lld,expires=%lld\r\n",
                 j, keys, vkeys);
 #endif
-          
+
         }
     }
     return info;
@@ -1473,10 +1506,10 @@ void createPidFile(void) {
 }
 
 void daemonize(void) {
-  
-#ifdef _WIN32 
+
+#ifdef _WIN32
   redisLog(REDIS_WARNING,"Windows does not support daemonize. Start Redis as service");
-#else   
+#else
     int fd;
 
     if (fork() != 0) exit(0); /* parent exits */
@@ -1541,6 +1574,9 @@ int main(int argc, char **argv) {
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeMain(server.el);
     aeDeleteEventLoop(server.el);
+#ifdef _WIN32
+    win32Cleanup();
+#endif
     return 0;
 }
 
@@ -1602,6 +1638,9 @@ void segvHandler(int sig, siginfo_t *info, void *secret) {
 
     /* free(messages); Don't call free() with possibly corrupted memory. */
     if (server.daemonize) unlink(server.pidfile);
+#ifdef _WIN32
+    win32Cleanup();
+#endif
     _exit(0);
 }
 

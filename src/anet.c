@@ -69,7 +69,8 @@ int anetNonBlock(char *err, int fd)
   // If iMode != 0, non-blocking mode is enabled.
   u_long iMode = 1;
   if (!ioctlsocket(fd, FIONBIO, &iMode)) {
-    anetSetError(err, "fcntl(F_GETFL): %s\n", strerror(errno));
+    errno = WSAGetLastError();
+    anetSetError(err, "ioctlsocket(FIONBIO): %d\n", errno);
     return ANET_ERR;
   };
 
@@ -170,13 +171,12 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
 
     if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ){
         /* "Error iError at WSAStartup()  */
-        WSACleanup();
         return ANET_ERR;
     };
 
-    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
+    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+        errno = WSAGetLastError();
         anetSetError(err, "socket: %s\n", strerror(errno));
-        WSACleanup();
         return ANET_ERR;
     }
 #else
@@ -204,7 +204,6 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
         if (he == NULL) {
             anetSetError(err, "can't resolve: %s\n", addr);
             closesocket(s);
-            WSACleanup();
             return ANET_ERR;
         }
         memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
@@ -214,8 +213,6 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
     }
     if (flags & ANET_CONNECT_NONBLOCK) {
         if (anetNonBlock(err,s) != ANET_OK) {
-            closesocket(s);
-            WSACleanup();
             return ANET_ERR;
         }
     }
@@ -243,11 +240,12 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
             flags & ANET_CONNECT_NONBLOCK)
             return s;
 
-        anetSetError(err, "connect: %s\n", strerror(errno));
 #ifdef _WIN32
+        errno = WSAGetLastError();
+        anetSetError(err, "connect: %d\n", errno);
         closesocket(s);
-        WSACleanup();
 #else
+        anetSetError(err, "connect: %s\n", strerror(errno));
         close(s);
 #endif
         return ANET_ERR;
@@ -318,30 +316,29 @@ int anetTcpServer(char *err, int port, char *bindaddr)
 
         if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ){
             /* "Error iError at WSAStartup()  */
-            WSACleanup();
             return ANET_ERR;
         };
 
-        if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET) {
-            anetSetError(err, "socket: %s\n", strerror(errno));
-            WSACleanup();
+        if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+            errno = WSAGetLastError();
+            anetSetError(err, "socket: %d\n", errno);
             return ANET_ERR;
         }
 #else
 
-    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP 0)) == -1) {
+    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
         anetSetError(err, "socket: %s\n", strerror(errno));
-        WSACleanup();
         return ANET_ERR;
     }
 #endif
 
     if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1) {
-        anetSetError(err, "setsockopt SO_REUSEADDR: %s\n", strerror(errno));
 #ifdef _WIN32
+        errno = WSAGetLastError();
+        anetSetError(err, "setsockopt SO_REUSEADDR: %d\n", errno);
         closesocket(s);
-        WSACleanup();
 #else
+        anetSetError(err, "setsockopt SO_REUSEADDR: %s\n", strerror(errno));
         close(s);
 #endif
         return ANET_ERR;
@@ -358,7 +355,6 @@ int anetTcpServer(char *err, int port, char *bindaddr)
         if (inAddress == 0) {
             anetSetError(err, "Invalid bind address\n");
             closesocket(s);
-            WSACleanup();
             return ANET_ERR;
         }
         else {
@@ -374,21 +370,23 @@ int anetTcpServer(char *err, int port, char *bindaddr)
 
     }
     if (bind(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
-        anetSetError(err, "bind: %s\n", strerror(errno));
 #ifdef _WIN32
+        errno = WSAGetLastError();
+        anetSetError(err, "bind: %d\n", errno);
         closesocket(s);
-        WSACleanup();
 #else
+        anetSetError(err, "bind: %s\n", strerror(errno));
         close(s);
 #endif
         return ANET_ERR;
     }
     if (listen(s, 511) == -1) { /* the magic 511 constant is from nginx */
-        anetSetError(err, "listen: %s\n", strerror(errno));
 #ifdef _WIN32
+        errno = WSAGetLastError();
+        anetSetError(err, "listen: %d\n", errno);
         closesocket(s);
-        WSACleanup();
 #else
+        anetSetError(err, "listen: %s\n", strerror(errno));
         close(s);
 #endif
         return ANET_ERR;
@@ -413,10 +411,10 @@ int anetAccept(char *err, int serversock, char *ip, int *port)
             if (errno == EINTR)
                 continue;
             else {
-                anetSetError(err, "accept: %s\n", strerror(errno));
 #ifdef _WIN32
-                WSACleanup();
+                errno = WSAGetLastError();
 #endif
+                anetSetError(err, "accept: %s\n", strerror(errno));
                 return ANET_ERR;
             }
         }

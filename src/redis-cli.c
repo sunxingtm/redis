@@ -82,7 +82,14 @@ static int cliConnect(int force) {
     static int fd = ANET_ERR;
 
     if (fd == ANET_ERR || force) {
+#ifdef _WIN32
+        if (force) {
+          //shutdown(fd, SHUT_RD);
+          closesocket(fd);
+        }
+#else
         if (force) close(fd);
+#endif
         fd = anetTcpConnect(err,config.hostip,config.hostport);
         if (fd == ANET_ERR) {
             fprintf(stderr, "Could not connect to Redis at %s:%d: %s", config.hostip, config.hostport, err);
@@ -101,10 +108,10 @@ static sds cliReadLine(int fd) {
         ssize_t ret;
 
 #ifdef _WIN32
-        ret = recv(fd,&c,1,0);      
-#else      
+        ret = recv(fd,&c,1,0);
+#else
         ret = read(fd,&c,1);
-#endif      
+#endif
         if (ret <= 0) {
             sdsfree(line);
             return NULL;
@@ -216,7 +223,12 @@ static int cliReadReply(int fd) {
         {
             return ECONNRESET;
         } else {
+#ifdef _WIN32
+            printf("I/O error while reading from socket: %d",WSAGetLastError());
+            WSACleanup();
+#else
             printf("I/O error while reading from socket: %s",strerror(errno));
+#endif
             exit(1);
         }
     }
@@ -311,7 +323,14 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     while(repeat--) {
         anetWrite(fd,cmd,sdslen(cmd));
         while (config.monitor_mode) {
+#ifdef _WIN32
+            if (cliReadSingleLineReply(fd,0)) {
+                WSACleanup();
+                exit(1);
+            }
+#else
             if (cliReadSingleLineReply(fd,0)) exit(1);
+#endif
             printf("\n");
         }
 
@@ -340,6 +359,9 @@ static int parseOptions(int argc, char **argv) {
             char *ip = zmalloc(32);
             if (anetResolve(NULL,argv[i+1],ip) == ANET_ERR) {
                 printf("Can't resolve %s\n", argv[i]);
+#ifdef _WIN32
+                WSACleanup();
+#endif
                 exit(1);
             }
             config.hostip = ip;
@@ -438,6 +460,9 @@ static void repl() {
                 if (strcasecmp(argv[0],"quit") == 0 ||
                     strcasecmp(argv[0],"exit") == 0)
                 {
+#ifdef _WIN32
+                    WSACleanup();
+#endif
                     exit(0);
                 } else {
                     int err;
@@ -461,6 +486,9 @@ static void repl() {
         /* linenoise() returns malloc-ed lines like readline() */
         free(line);
     }
+#ifdef _WIN32
+    WSACleanup();
+#endif
     exit(0);
 }
 
@@ -495,11 +523,20 @@ int main(int argc, char **argv) {
     config.tty = isatty(fileno(stdout)) || (getenv("FAKETTY") != NULL);
     config.mb_sep = '\n';
 
+
+#ifdef _WIN32
+    if (getenv("USERPROFILE") != NULL) {
+        config.historyfile = malloc(256);
+        snprintf(config.historyfile,256,"%s\\.rediscli_history",getenv("USERPROFILE"));
+        linenoiseHistoryLoad(config.historyfile);
+    }
+#else
     if (getenv("HOME") != NULL) {
         config.historyfile = malloc(256);
         snprintf(config.historyfile,256,"%s/.rediscli_history",getenv("HOME"));
         linenoiseHistoryLoad(config.historyfile);
     }
+#endif
 
     firstarg = parseOptions(argc,argv);
     argc -= firstarg;

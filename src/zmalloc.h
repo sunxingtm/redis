@@ -39,5 +39,8 @@ char *zstrdup(const char *s);
 size_t zmalloc_used_memory(void);
 void zmalloc_enable_thread_safeness(void);
 float zmalloc_get_fragmentation_ratio(void);
+#ifdef _WIN32
+void zmalloc_free_used_memory_mutex(void);
+#endif
 
 #endif /* _ZMALLOC_H */

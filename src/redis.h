@@ -10,8 +10,10 @@
 
 #if defined _WIN32
   #include <string.h>
-  #include <stdio.h>       
+  #include <stdio.h>
   #include "win32fixes.h"
+#else
+  #include <pthread.h>
 #endif
 
 #include <stdio.h>
@@ -22,7 +24,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <pthread.h>
+
 
 #include "ae.h"     /* Event driven programming library */
 #include "sds.h"    /* Dynamic safe strings */

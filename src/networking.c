@@ -41,7 +41,11 @@ redisClient *createClient(int fd) {
     if (aeCreateFileEvent(server.el,fd,AE_READABLE,
         readQueryFromClient, c) == AE_ERR)
     {
+#ifdef _WIN32
+        closesocket(fd);
+#else
         close(fd);
+#endif
         zfree(c);
         return NULL;
     }
@@ -372,7 +376,11 @@ void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     redisLog(REDIS_VERBOSE,"Accepted %s:%d", cip, cport);
     if ((c = createClient(cfd)) == NULL) {
         redisLog(REDIS_WARNING,"Error allocating resoures for the client");
+#ifdef _WIN32
+        closesocket(cfd);
+#else
         close(cfd); /* May be already closed, just ingore errors */
+#endif
         return;
     }
     /* If maxclient directive is set and this is one client more... close the
@@ -390,8 +398,8 @@ void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (write(c->fd,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
-#endif        
-        
+#endif
+
         freeClient(c);
         return;
     }
@@ -435,7 +443,11 @@ void freeClient(redisClient *c) {
     aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
     listRelease(c->reply);
     freeClientArgv(c);
+#ifdef _WIN32
+    closesocket(c->fd);
+#else
     close(c->fd);
+#endif
     /* Remove from the list of clients */
     ln = listSearchKey(server.clients,c);
     redisAssert(ln != NULL);
@@ -465,6 +477,7 @@ void freeClient(redisClient *c) {
     if (c->flags & REDIS_SLAVE) {
         if (c->replstate == REDIS_REPL_SEND_BULK && c->repldbfd != -1)
             close(c->repldbfd);
+
         list *l = (c->flags & REDIS_MONITOR) ? server.monitors : server.slaves;
         ln = listSearchKey(l,c);
         redisAssert(ln != NULL);
@@ -514,7 +527,12 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
                 /* Don't reply to a master */
                 nwritten = c->bufpos - c->sentlen;
             } else {
+#ifdef _WIN32
+                nwritten = send(fd,c->buf+c->sentlen,c->bufpos-c->sentlen,0);
+#else
                 nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
+#endif
+
                 if (nwritten <= 0) break;
             }
             c->sentlen += nwritten;
@@ -540,9 +558,9 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
                 nwritten = objlen - c->sentlen;
             } else {
 #ifdef _WIN32
-            nwritten = send( fd, ((char*)o->ptr)+c->sentlen, objlen - c->sentlen, 0);
+            nwritten = send( fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen, 0);
 #else
-                nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
+            nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
 #endif
                 if (nwritten <= 0) break;
             }
@@ -783,6 +801,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 
 #ifdef _WIN32
     nread = recv(fd, buf, REDIS_IOBUF_LEN, 0);
+    if (nread < 0) errno = WSAGetLastError();
 #else
     nread = read(fd, buf, REDIS_IOBUF_LEN);
 #endif

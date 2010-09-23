@@ -2,7 +2,7 @@
  * line editing lib needs to be 20,000 lines of C code.
  *
  * You can find the latest source code at:
- * 
+ *
  *   http://github.com/antirez/linenoise
  *
  * Does a number of crazy assumptions that happen to be true in 99.9999% of
@@ -66,17 +66,18 @@
  * CUF (CUrsor Forward)
  *    Sequence: ESC [ n C
  *    Effect: moves cursor forward of n chars
- * 
+ *
  */
 
 #include "fmacros.h"
 
-#ifdef _WIN32 
+#ifdef _WIN32
   #include "win32fixes.h"
+  #define REDIS_NOTUSED(V) ((void) V)
 #else
   #include <termios.h>
   #include <unistd.h>
-  #include <sys/ioctl.h>  
+  #include <sys/ioctl.h>
 #endif
 
 #include <stdlib.h>
@@ -92,11 +93,14 @@
 #define LINENOISE_MAX_LINE 4096
 static char *unsupported_term[] = {"dumb","cons25",NULL};
 
-#ifndef _WIN32 
+#ifndef _WIN32
 static struct termios orig_termios; /* in order to restore at exit */
-static int rawmode = 0; /* for atexit() function to check if restore is needed*/
-static int atexit_registered = 0; /* register atexit just 1 time */
+#else
+HANDLE hOut;
+HANDLE hIn;
 #endif
+static int atexit_registered = 0; /* register atexit just 1 time */
+static int rawmode = 0; /* for atexit() function to check if restore is needed*/
 
 static int history_max_len = LINENOISE_DEFAULT_HISTORY_MAX_LEN;
 static int history_len = 0;
@@ -106,6 +110,10 @@ static void linenoiseAtExit(void);
 int linenoiseHistoryAdd(const char *line);
 
 static int isUnsupportedTerm(void) {
+#ifdef _WIN32
+	return 0;
+#endif
+
     char *term = getenv("TERM");
     int j;
 
@@ -126,8 +134,8 @@ static void freeHistory(void) {
 }
 
 static int enableRawMode(int fd) {
-  
-#ifndef _WIN32 
+
+#ifndef _WIN32
     struct termios raw;
 
     if (!isatty(STDIN_FILENO)) goto fatal;
@@ -155,22 +163,43 @@ static int enableRawMode(int fd) {
     /* put terminal in raw mode after flushing */
     if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
     rawmode = 1;
+#else
+    DWORD mode;
 
+    REDIS_NOTUSED(fd);
+    hOut = GetStdHandle(STD_INPUT_HANDLE);
+    if (hOut==INVALID_HANDLE_VALUE) goto fatal;
+    if (!GetConsoleMode(hOut, &mode)) {
+      CloseHandle(hOut);
+      printf("fcntl(F_GETFL): %s\n", strerror(errno));
+      goto fatal;
+    }
+
+    if (!atexit_registered) {
+        atexit(linenoiseAtExit);
+        atexit_registered = 1;
+    }
+
+    rawmode = 1;
+#endif
     return 0;
-
 fatal:
-#endif              
-
     errno = ENOTTY;
     return -1;
 }
 
 static void disableRawMode(int fd) {
-#ifndef _WIN32 
+#ifdef _WIN32
+    REDIS_NOTUSED(fd);
+    if (rawmode) {
+        CloseHandle(hOut);
+        rawmode = 0;
+    }
+#else
     /* Don't even check the return value as it's too late. */
     if (rawmode && tcsetattr(fd,TCSAFLUSH,&orig_termios) != -1)
         rawmode = 0;
-#endif    
+#endif
 }
 
 /* At exit we'll try to fix the terminal to the initial conditions. */
@@ -180,20 +209,23 @@ static void linenoiseAtExit(void) {
 }
 
 static int getColumns(void) {
-#ifndef _WIN32  
+#ifndef _WIN32
     struct winsize ws;
 
     if (ioctl(1, TIOCGWINSZ, &ws) == -1) return 80;
     return ws.ws_col;
 #else
-    return 80;  
-#endif  
+    CONSOLE_SCREEN_BUFFER_INFO b;
+
+    if (!GetConsoleScreenBufferInfo(hOut, &b)) return 80;
+    return b.srWindow.Right - b.srWindow.Left;
+#endif
 }
 
 static void refreshLine(int fd, const char *prompt, char *buf, size_t len, size_t pos, size_t cols) {
     char seq[64];
     size_t plen = strlen(prompt);
-    
+
     while((plen+pos) >= cols) {
         buf++;
         len--;
@@ -202,7 +234,7 @@ static void refreshLine(int fd, const char *prompt, char *buf, size_t len, size_
     while (plen+len > cols) {
         len--;
     }
-
+#ifndef _WIN32
     /* Cursor to left edge */
     snprintf(seq,64,"\x1b[0G");
     if (write(fd,seq,strlen(seq)) == -1) return;
@@ -215,6 +247,26 @@ static void refreshLine(int fd, const char *prompt, char *buf, size_t len, size_
     /* Move cursor to original position. */
     snprintf(seq,64,"\x1b[0G\x1b[%dC", (int)(pos+plen));
     if (write(fd,seq,strlen(seq)) == -1) return;
+#else
+    DWORD pl, bl, w;
+    CONSOLE_SCREEN_BUFFER_INFO b;
+
+    REDIS_NOTUSED(seq);
+    REDIS_NOTUSED(fd);
+
+    /* Get buffer console info */
+    if (!GetConsoleScreenBufferInfo(hOut, &b)) return;
+    /*  Cursor to the left edge */
+    if (!SetConsoleCursorPosition(hOut, (COORD){0, b.dwCursorPosition.Y})) return;
+    /* Write the prompt and the current buffer content */
+    WriteConsole(hOut, prompt, plen, &pl, NULL);
+    WriteConsole(hOut, buf, len, &bl, NULL);
+    /* Erase to right */
+    FillConsoleOutputCharacter(hOut, ' ', b.srWindow.Right-pl-bl,
+                              (COORD) {pl+bl, b.dwCursorPosition.Y}, &w);
+
+    SetConsoleCursorPosition(hOut, (COORD){pl+bl, b.dwCursorPosition.Y});
+#endif
 }
 
 static int linenoisePrompt(int fd, char *buf, size_t buflen, const char *prompt) {
@@ -230,7 +282,7 @@ static int linenoisePrompt(int fd, char *buf, size_t buflen, const char *prompt)
     /* The latest history entry is always our current buffer, that
      * initially is just an empty string. */
     linenoiseHistoryAdd("");
-    
+
     if (write(fd,prompt,plen) == -1) return -1;
     while(1) {
         char c;
@@ -373,7 +425,14 @@ static int linenoiseRaw(char *buf, size_t buflen, const char *prompt) {
         errno = EINVAL;
         return -1;
     }
+#ifdef _WIN32
+    if (enableRawMode(fd) == -1) return -1;
+    count = linenoisePrompt(fd, buf, buflen, prompt);
+    disableRawMode(fd);
+    printf("\n");
+#else
     if (!isatty(STDIN_FILENO)) {
+
         if (fgets(buf, buflen, stdin) == NULL) return -1;
         count = strlen(buf);
         if (count && buf[count-1] == '\n') {
@@ -386,6 +445,7 @@ static int linenoiseRaw(char *buf, size_t buflen, const char *prompt) {
         disableRawMode(fd);
         printf("\n");
     }
+#endif
     return count;
 }
 
@@ -459,7 +519,7 @@ int linenoiseHistorySetMaxLen(int len) {
 int linenoiseHistorySave(char *filename) {
     FILE *fp = fopen(filename,"w");
     int j;
-    
+
     if (fp == NULL) return -1;
     for (j = 0; j < history_len; j++)
         fprintf(fp,"%s\n",history[j]);
@@ -475,12 +535,12 @@ int linenoiseHistorySave(char *filename) {
 int linenoiseHistoryLoad(char *filename) {
     FILE *fp = fopen(filename,"r");
     char buf[LINENOISE_MAX_LINE];
-    
+
     if (fp == NULL) return -1;
 
     while (fgets(buf,LINENOISE_MAX_LINE,fp) != NULL) {
         char *p;
-        
+
         p = strchr(buf,'\r');
         if (!p) p = strchr(buf,'\n');
         if (p) *p = '\0';
