@@ -1638,9 +1638,6 @@ void segvHandler(int sig, siginfo_t *info, void *secret) {
 
     /* free(messages); Don't call free() with possibly corrupted memory. */
     if (server.daemonize) unlink(server.pidfile);
-#ifdef _WIN32
-    win32Cleanup();
-#endif
     _exit(0);
 }
 
@@ -1672,8 +1669,54 @@ void setupSigSegvAction(void) {
 }
 
 #else /* HAVE_BACKTRACE */
+#ifdef _WIN32
+/* MinGW singnal handlers without backtrace */
+void segvHandler(int sig) {
+    sds infostring;
+
+    redisLog(REDIS_WARNING,
+        "======= Ooops! Redis %s got signal: -%d- =======", REDIS_VERSION, sig);
+    infostring = genRedisInfoString();
+    redisLog(REDIS_WARNING, "%s",infostring);
+    /* It's not safe to sdsfree() the returned string under memory
+     * corruption conditions. Let it leak as we are going to abort */
+
+    /* free(messages); Don't call free() with possibly corrupted memory. */
+    if (server.daemonize) unlink(server.pidfile);
+    win32Cleanup();
+    _exit(0);
+}
+
+void sigtermHandler(int sig) {
+    REDIS_NOTUSED(sig);
+
+    redisLog(REDIS_WARNING,"SIGTERM received, scheduling shutting down...");
+    server.shutdown_asap = 1;
+}
+
+void setupSigSegvAction(void) {
+    struct sigaction act;
+
+    sigemptyset (&act.sa_mask);
+    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
+     * is used. Otherwise, sa_handler is used */
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
+    act.sa_sigaction = segvHandler;
+    sigaction (SIGSEGV, &act, NULL);
+    sigaction (SIGBUS, &act, NULL);
+    sigaction (SIGFPE, &act, NULL);
+    sigaction (SIGILL, &act, NULL);
+    sigaction (SIGBUS, &act, NULL);
+
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
+    act.sa_handler = sigtermHandler;
+    sigaction (SIGTERM, &act, NULL);
+    return;
+}
+#else
 void setupSigSegvAction(void) {
 }
+#endif
 #endif /* HAVE_BACKTRACE */
 
 /* The End */

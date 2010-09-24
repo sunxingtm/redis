@@ -46,9 +46,6 @@
 #endif
 
 /* define aof_fsync to fdatasync() in Linux and fsync() for all the rest */
-#ifdef _WIN32 
-  #define aof_fsync fsync
-#endif  
 #ifdef __linux__
   #define aof_fsync fdatasync
 #else

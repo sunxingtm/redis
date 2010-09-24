@@ -4,6 +4,7 @@
 #include <process.h>
 #include <errno.h>
 #include <winsock2.h>
+#include <signal.h>
 #include "redis.h"
 #include "win32fixes.h"
 
@@ -27,6 +28,19 @@ int w32CeaseAndDesist(pid_t pid)
   return 0;
 }
 
+int sigaction(int sig, struct sigaction *in, struct sigaction *out)
+{
+    REDIS_NOTUSED(out);
+
+    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
+     * is used. Otherwise, sa_handler is used */
+    if (in->sa_flags & SA_SIGINFO)
+     	signal(sig, in->sa_sigaction);
+    else
+        signal(sig, in->sa_handler);
+
+    return 0;
+}
 
 int kill(pid_t pid, int sig)
 {

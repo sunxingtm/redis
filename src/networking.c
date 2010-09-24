@@ -827,7 +827,8 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             freeClient(c);
             return;
         } else if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
-            nread = 0; /* Winsock can send ENOENT instead EAGAIN */
+            errno = EAGAIN;
+            nread = -1; /* Winsock can send ENOENT instead EAGAIN */
         }
     }
 #else

@@ -8,7 +8,7 @@
 #endif
 
 #ifdef _WIN32
-  #define WIN32_LEAN_AND_MEAN  /* stops windows.h including winsock.h */
+  #define WIN32_LEAN_AND_MEAN
   #define NOGDI
   #define __USE_W32_SOCKETS
 
@@ -77,6 +77,7 @@
   #define SIGINT	 2 /* Interrupt	Terminate; can be trapped */
   #define SIGQUIT	 3 /* Quit	Terminate with core dump; can be trapped */
   #define SIGTRAP  5
+  #define SIGBUS   7
   #define SIGKILL	 9 /* Kill	Forced termination; cannot be trapped */
   #define SIGPIPE 13
   #define SIGALRM 14
@@ -95,6 +96,19 @@
   #define SIGUSR1  30
   #define SIGUSR2  31
 
+  #define ucontext_t void*
+
+  #define SA_NOCLDSTOP    0x00000001u
+  #define SA_NOCLDWAIT    0x00000002u
+  #define SA_SIGINFO      0x00000004u
+  #define SA_ONSTACK      0x08000000u
+  #define SA_RESTART      0x10000000u
+  #define SA_NODEFER      0x40000000u
+  #define SA_RESETHAND    0x80000000u
+  #define SA_NOMASK       SA_NODEFER
+  #define SA_ONESHOT      SA_RESETHAND
+  #define SA_RESTORER     0x04000000
+
   #ifndef _SIGSET_T_
   #define _SIGSET_T_
     typedef unsigned long sigset_t;
@@ -112,13 +126,16 @@
     #define SIG_UNBLOCK (2)
   #endif /*SIG_SETMASK*/
 
-  /*
-  struct sigaction {
+
+struct sigaction {
     int          sa_flags;
     sigset_t     sa_mask;
-    __p_sig_fn_t sa_handler;   // see mingw/include/signal.h about the type
+    __p_sig_fn_t sa_handler;
+    __p_sig_fn_t sa_sigaction;
   };
-  */
+
+ int sigaction(int sig, struct sigaction *in, struct sigaction *out);
+
   // Socekts
   //#define EINTR WSAEINTR
   //#define EAGAIN WSAEWOULDBLOCK
