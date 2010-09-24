@@ -247,7 +247,12 @@ static int cliReadReply(int fd) {
     case '*':
         return cliReadMultiBulkReply(fd);
     default:
+#ifdef _WIN32
+        /* Some more info */
+        printf("protocol error, got '%c' (\\x%02x) as reply type byte", type, (unsigned char)c);
+#else
         printf("protocol error, got '%c' as reply type byte", type);
+#endif
         return 1;
     }
 }
