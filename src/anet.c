@@ -413,8 +413,10 @@ int anetAccept(char *err, int serversock, char *ip, int *port)
             else {
 #ifdef _WIN32
                 errno = WSAGetLastError();
-#endif
+                anetSetError(err, "accept: %d\n", errno);
+#else
                 anetSetError(err, "accept: %s\n", strerror(errno));
+#endif
                 return ANET_ERR;
             }
         }
