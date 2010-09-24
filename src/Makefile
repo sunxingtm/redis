@@ -130,7 +130,7 @@ redis-check-aof: $(CHECKAOFOBJ)
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
+	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe
 
 dep:
 	$(CC) -MM *.c
