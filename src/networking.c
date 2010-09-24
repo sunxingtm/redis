@@ -18,6 +18,11 @@ static inline int writev(int sock, struct iovec *iov, int nvecs)
     if (WSASend(sock, (LPWSABUF)iov, nvecs, &ret, 0, NULL, NULL) == 0) {
         return ret;
     }
+
+    errno = WSAGetLastError();
+    if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+       errno = EAGAIN;
+
     return -1;
 }
 #endif
@@ -530,6 +535,7 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             } else {
 #ifdef _WIN32
                 nwritten = send(fd,c->buf+c->sentlen,c->bufpos-c->sentlen,0);
+                if (nwritten == -1) errno = WSAGetLastError();
 #else
                 nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
 #endif
@@ -560,6 +566,7 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             } else {
 #ifdef _WIN32
             nwritten = send( fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen, 0);
+            if (nwritten == -1) errno = WSAGetLastError();
 #else
             nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
 #endif
@@ -584,6 +591,10 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (nwritten == -1) {
         if (errno == EAGAIN) {
             nwritten = 0;
+#ifdef _WIN32
+        } else if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+            nwritten = 0;
+#endif
         } else {
             redisLog(REDIS_VERBOSE,
                 "Error writing to client: %s", strerror(errno));
@@ -809,7 +820,16 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 
 #ifdef _WIN32
     nread = recv(fd, buf, REDIS_IOBUF_LEN, 0);
-    if (nread < 0) errno = WSAGetLastError();
+    if (nread < 0) {
+        errno = WSAGetLastError();
+        if (errno == WSAECONNRESET) {
+            redisLog(REDIS_VERBOSE, "Client closed connection");
+            freeClient(c);
+            return;
+        } else if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+            nread = 0; /* Winsock can send ENOENT instead EAGAIN */
+        }
+    }
 #else
     nread = read(fd, buf, REDIS_IOBUF_LEN);
 #endif
