@@ -249,7 +249,8 @@ static int cliReadReply(int fd) {
     default:
 #ifdef _WIN32
         /* Some more info */
-        printf("protocol error, got '%c' (\\x%02x) as reply type byte", type, (unsigned char)c);
+        // printf("protocol error, got '%c' (\\x%02x) as reply type byte", type, (unsigned char)type);
+        printf("protocol error, got (\\x%02x) as reply type byte", (unsigned char)type);
 #else
         printf("protocol error, got '%c' as reply type byte", type);
 #endif
