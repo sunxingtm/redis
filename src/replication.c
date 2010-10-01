@@ -123,10 +123,13 @@ int syncWrite(int fd, char *ptr, ssize_t size, int timeout) {
     while(size) {
         if (aeWait(fd,AE_WRITABLE,1000) & AE_WRITABLE) {
 #ifdef _WIN32
-            nwritten = send(fd,ptr,size,0);          
-#else          
+            nwritten = send(fd,ptr,size,0);
+            if (nwritten == -1) errno = WSAGetLastError();
+            if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+                errno = EAGAIN;
+#else
             nwritten = write(fd,ptr,size);
-#endif          
+#endif
             if (nwritten == -1) return -1;
             ptr += nwritten;
             size -= nwritten;
@@ -146,7 +149,11 @@ int syncRead(int fd, char *ptr, ssize_t size, int timeout) {
     timeout++;
     while(size) {
         if (aeWait(fd,AE_READABLE,1000) & AE_READABLE) {
+#ifdef _WIN32
+            nread = recv(fd,ptr,size,0);
+#else
             nread = read(fd,ptr,size);
+#endif
             if (nread <= 0) return -1;
             ptr += nread;
             size -= nread;
@@ -261,9 +268,9 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
          * operations) will never be smaller than the few bytes we need. */
         sds bulkcount;
 
-#ifdef _WIN32
-        bulkcount = sdscatprintf(sdsempty(),"$%"PRIu64"\r\n",(unsigned long long)
+        bulkcount = sdscatprintf(sdsempty(),"$%lld\r\n",(unsigned long long)
             slave->repldbsize);
+#ifdef _WIN32
         if (send(fd,bulkcount,sdslen(bulkcount),0) != (signed)sdslen(bulkcount))
         {
             sdsfree(bulkcount);
@@ -271,15 +278,13 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
             return;
         }
 #else
-        bulkcount = sdscatprintf(sdsempty(),"$%lld\r\n",(unsigned long long)
-            slave->repldbsize);
         if (write(fd,bulkcount,sdslen(bulkcount)) != (signed)sdslen(bulkcount))
         {
             sdsfree(bulkcount);
             freeClient(slave);
             return;
         }
-#endif      
+#endif
         sdsfree(bulkcount);
     }
     lseek(slave->repldbfd,slave->repldboff,SEEK_SET);
@@ -297,14 +302,14 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
         freeClient(slave);
         return;
     }
-#else    
+#else
     if ((nwritten = write(fd,buf,buflen)) == -1) {
         redisLog(REDIS_VERBOSE,"Write error sending DB to slave: %s",
             strerror(errno));
         freeClient(slave);
         return;
     }
-#endif    
+#endif
     slave->repldboff += nwritten;
     if (slave->repldboff == slave->repldbsize) {
         close(slave->repldbfd);
@@ -396,10 +401,10 @@ int syncWithMaster(void) {
     	snprintf(authcmd, 1024, "AUTH %s\r\n", server.masterauth);
     	if (syncWrite(fd, authcmd, strlen(server.masterauth)+7, 5) == -1) {
 #ifdef _WIN32
-            closesocket(fd);  
-#else  
+            closesocket(fd);
+#else
             close(fd);
-#endif  
+#endif
             redisLog(REDIS_WARNING,"Unable to AUTH to MASTER: %s",
                 strerror(errno));
             return REDIS_ERR;
@@ -407,10 +412,10 @@ int syncWithMaster(void) {
         /* Read the AUTH result.  */
         if (syncReadLine(fd,buf,1024,3600) == -1) {
 #ifdef _WIN32
-            closesocket(fd);  
-#else  
+            closesocket(fd);
+#else
             close(fd);
-#endif  
+#endif
             redisLog(REDIS_WARNING,"I/O error reading auth result from MASTER: %s",
                 strerror(errno));
             return REDIS_ERR;
@@ -425,10 +430,10 @@ int syncWithMaster(void) {
     /* Issue the SYNC command */
     if (syncWrite(fd,"SYNC \r\n",7,5) == -1) {
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         redisLog(REDIS_WARNING,"I/O error writing to MASTER: %s",
             strerror(errno));
         return REDIS_ERR;
@@ -436,29 +441,29 @@ int syncWithMaster(void) {
     /* Read the bulk write count */
     if (syncReadLine(fd,buf,1024,3600) == -1) {
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         redisLog(REDIS_WARNING,"I/O error reading bulk count from MASTER: %s",
             strerror(errno));
         return REDIS_ERR;
     }
     if (buf[0] == '-') {
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         redisLog(REDIS_WARNING,"MASTER aborted replication with an error: %s",
             buf+1);
         return REDIS_ERR;
     } else if (buf[0] != '$') {
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         redisLog(REDIS_WARNING,"Bad protocol from MASTER, the first byte is not '$', are you sure the host and port are right?");
         return REDIS_ERR;
     }
@@ -474,10 +479,10 @@ int syncWithMaster(void) {
     }
     if (dfd == -1) {
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         redisLog(REDIS_WARNING,"Opening the temp file needed for MASTER <-> SLAVE synchronization: %s",strerror(errno));
         return REDIS_ERR;
     }
@@ -489,10 +494,10 @@ int syncWithMaster(void) {
             redisLog(REDIS_WARNING,"I/O error trying to sync with MASTER: %s",
                 (nread == -1) ? strerror(errno) : "connection lost");
 #ifdef _WIN32
-            closesocket(fd);  
-#else  
+            closesocket(fd);
+#else
             close(fd);
-#endif  
+#endif
             close(dfd);
             return REDIS_ERR;
         }
@@ -500,10 +505,10 @@ int syncWithMaster(void) {
         if (nwritten == -1) {
             redisLog(REDIS_WARNING,"Write error writing to the DB dump file needed for MASTER <-> SLAVE synchrnonization: %s", strerror(errno));
 #ifdef _WIN32
-            closesocket(fd);  
-#else  
+            closesocket(fd);
+#else
             close(fd);
-#endif  
+#endif
             close(dfd);
             return REDIS_ERR;
         }
@@ -514,20 +519,20 @@ int syncWithMaster(void) {
         redisLog(REDIS_WARNING,"Failed trying to rename the temp DB into dump.rdb in MASTER <-> SLAVE synchronization: %s", strerror(errno));
         unlink(tmpfile);
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         return REDIS_ERR;
     }
     emptyDb();
     if (rdbLoad(server.dbfilename) != REDIS_OK) {
         redisLog(REDIS_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
 #ifdef _WIN32
-        closesocket(fd);  
-#else  
+        closesocket(fd);
+#else
         close(fd);
-#endif  
+#endif
         return REDIS_ERR;
     }
     server.master = createClient(fd);

@@ -162,21 +162,11 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
     struct sockaddr_in sa;
 
 #ifdef _WIN32
-    WSADATA t_wsa; // WSADATA structure
-    WORD wVers; // version number
-    int iError; // error number
-
-    wVers = MAKEWORD(2, 2); // Set the version number to 2.2
-    iError = WSAStartup(wVers, &t_wsa); // Start the WSADATA
-
-    if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ){
-        /* "Error iError at WSAStartup()  */
-        return ANET_ERR;
-    };
+    memset(&sa, 0, sizeof(sa));
 
     if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
         errno = WSAGetLastError();
-        anetSetError(err, "socket: %s\n", strerror(errno));
+        anetSetError(err, "create socket error: %d\n", errno);
         return ANET_ERR;
     }
 #else
@@ -236,12 +226,14 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
     }
 #endif
     if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
+#ifdef _WIN32
+        errno = WSAGetLastError();
+        if ((errno == WSAEINVAL) || (errno == WSAEWOULDBLOCK)) errno = EINPROGRESS;
+#endif
         if (errno == EINPROGRESS &&
             flags & ANET_CONNECT_NONBLOCK)
             return s;
-
 #ifdef _WIN32
-        errno = WSAGetLastError();
         anetSetError(err, "connect: %d\n", errno);
         closesocket(s);
 #else
@@ -290,6 +282,9 @@ int anetWrite(int fd, char *buf, int count)
     while(totlen != count) {
 #ifdef _WIN32
         nwritten = send(fd,buf,count-totlen,0);
+        if (nwritten == -1) errno = WSAGetLastError();
+        if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+            errno = EAGAIN;
 #else
         nwritten = write(fd,buf,count-totlen);
 #endif
@@ -307,15 +302,10 @@ int anetTcpServer(char *err, int port, char *bindaddr)
     struct sockaddr_in sa;
 
 #ifdef _WIN32
-        WSADATA t_wsa; // WSADATA structure
-        WORD wVers; // version number
-        int iError; // error number
-
-        wVers = MAKEWORD(2, 2); // Set the version number to 2.2
-        iError = WSAStartup(wVers, &t_wsa); // Start the WSADATA
-
-        if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ){
+        if(!w32initWinSock()) {
             /* "Error iError at WSAStartup()  */
+            errno = WSAGetLastError();
+            anetSetError(err, "Winsock init error: %d\n", errno);
             return ANET_ERR;
         };
 
@@ -325,7 +315,6 @@ int anetTcpServer(char *err, int port, char *bindaddr)
             return ANET_ERR;
         }
 #else
-
     if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {
         anetSetError(err, "socket: %s\n", strerror(errno));
         return ANET_ERR;
@@ -372,7 +361,7 @@ int anetTcpServer(char *err, int port, char *bindaddr)
     if (bind(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
 #ifdef _WIN32
         errno = WSAGetLastError();
-        anetSetError(err, "bind: %d\n", errno);
+        anetSetError(err, "bind error: %d\n", errno);
         closesocket(s);
 #else
         anetSetError(err, "bind: %s\n", strerror(errno));
@@ -383,7 +372,7 @@ int anetTcpServer(char *err, int port, char *bindaddr)
     if (listen(s, 511) == -1) { /* the magic 511 constant is from nginx */
 #ifdef _WIN32
         errno = WSAGetLastError();
-        anetSetError(err, "listen: %d\n", errno);
+        anetSetError(err, "listen error: %d\n", errno);
         closesocket(s);
 #else
         anetSetError(err, "listen: %s\n", strerror(errno));

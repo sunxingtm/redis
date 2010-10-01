@@ -247,11 +247,7 @@ void substrCommand(redisClient *c) {
     rangelen = (end-start)+1;
 
     /* Return the result */
-#ifdef _WIN32
-    addReplySds(c,sdscatprintf(sdsempty(),"$%"PRIu64"\r\n",(long long unsigned int)rangelen));    
-#else
     addReplySds(c,sdscatprintf(sdsempty(),"$%zu\r\n",rangelen));
-#endif    
     range = sdsnewlen((char*)o->ptr+start,rangelen);
     addReplySds(c,range);
     addReply(c,shared.crlf);

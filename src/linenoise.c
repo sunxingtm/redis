@@ -206,7 +206,7 @@ static int win32read(char *c) {
                         *c = 127;
                         return 1;
                     default:
-                        return 1;
+                        if (*c) return 1;
                 }
             }
         }
@@ -214,7 +214,18 @@ static int win32read(char *c) {
 
     return -1; /* Makes compiler happy */
 }
-#endif
+
+#ifdef __STRICT_ANSI__
+char *strdup(const char *s) {
+    size_t l = strlen(s)+1;
+    char *p = malloc(l);
+
+    memcpy(p,s,l);
+    return p;
+}
+#endif /*   __STRICT_ANSI__   */
+
+#endif /*   _WIN32    */
 
 static int isUnsupportedTerm(void) {
 #ifdef _WIN32

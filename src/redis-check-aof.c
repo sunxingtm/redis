@@ -6,6 +6,14 @@
 #include <sys/stat.h>
 #include "config.h"
 
+#ifdef _WIN32
+    #include "win32fixes.h"
+    #ifdef __STRICT_ANSI__
+      #define strncasecmp(x,y,l) (*(x)=(y) ? 0 : 1)
+    #endif
+    int _fmode = _O_BINARY;
+#endif
+
 #define ERROR(...) { \
     char __buf[1024]; \
     sprintf(__buf, __VA_ARGS__); \

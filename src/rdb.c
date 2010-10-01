@@ -10,8 +10,8 @@
   #include "win32fixes.h"
 #else
   #include <sys/resource.h>
-  #include <sys/wait.h>  
-  #include <arpa/inet.h>  
+  #include <sys/wait.h>
+  #include <arpa/inet.h>
 #endif
 
 int rdbSaveType(FILE *fp, unsigned char type) {
@@ -371,7 +371,11 @@ int rdbSave(char *filename) {
         waitEmptyIOJobsQueue();
 
     snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
+#ifdef _WIN32
+    fp = fopen(tmpfile,"w+b");
+#else
     fp = fopen(tmpfile,"w");
+#endif
     if (!fp) {
         redisLog(REDIS_WARNING, "Failed saving the DB: %s", strerror(errno));
         return REDIS_ERR;
@@ -396,7 +400,7 @@ int rdbSave(char *filename) {
             sds keystr = dictGetEntryKey(de);
             robj key, *o = dictGetEntryVal(de);
             time_t expiretime;
-            
+
             initStaticStringObject(key,keystr);
             expiretime = getExpire(db,&key);
 
@@ -440,9 +444,17 @@ int rdbSave(char *filename) {
 
     /* Use RENAME to make sure the DB file is changed atomically only
      * if the generate DB file is ok. */
+#ifdef _WIN32
+    remove("tmpdump");
+    rename(filename, "tmpdump");
+    remove(filename);
+#endif
     if (rename(tmpfile,filename) == -1) {
         redisLog(REDIS_WARNING,"Error moving temp DB file on the final destination: %s", strerror(errno));
         unlink(tmpfile);
+#ifdef _WIN32
+        rename(filename, "tmpdump");
+#endif
         return REDIS_ERR;
     }
     redisLog(REDIS_NOTICE,"DB saved on disk");
@@ -467,12 +479,7 @@ int rdbSaveBackground(char *filename) {
     if ((childpid = fork()) == 0) {
         /* Child */
         if (server.vm_enabled) vmReopenSwapFile();
-#ifdef _WIN32
-        closesocket(server.fd);
-        WSACleanup();
-#else
         close(server.fd);
-#endif           
         if (rdbSave(filename) == REDIS_OK) {
             _exit(0);
         } else {
@@ -481,9 +488,22 @@ int rdbSaveBackground(char *filename) {
     } else {
         /* Parent */
         if (childpid == -1) {
+#ifdef _WIN32
+            /* On WIN32 fork() is empty function which always return -1 */
+            /* So, on WIN32, let's just save in foreground. */
+            if (server.vm_enabled) vmReopenSwapFile();
+            if (rdbSave(filename) == REDIS_OK) {
+                backgroundSaveDoneHandler(0);
+                return REDIS_OK;
+            } else {
+                backgroundSaveDoneHandler(0);
+                return REDIS_ERR;
+            }
+#else
             redisLog(REDIS_WARNING,"Can't save in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
+#endif
         }
         redisLog(REDIS_NOTICE,"Background saving started by pid %d",childpid);
         server.bgsavechildpid = childpid;
@@ -813,6 +833,9 @@ int rdbLoad(char *filename) {
     time_t expiretime, now = time(NULL);
 
     fp = fopen(filename,"r");
+#ifdef _WIN32
+    if (!fp) redisLog(REDIS_WARNING,"Open data file %s: %s", filename, strerror(GetLastError()));
+#endif
     if (!fp) return REDIS_ERR;
     if (fread(buf,9,1,fp) == 0) goto eoferr;
     buf[9] = '\0';

@@ -8,6 +8,22 @@
 #include "redis.h"
 #include "win32fixes.h"
 
+int w32initWinSock(void) {
+
+  WSADATA t_wsa; // WSADATA structure
+  WORD wVers; // version number
+  int iError; // error number
+
+  wVers = MAKEWORD(2, 2); // Set the version number to 2.2
+  iError = WSAStartup(wVers, &t_wsa); // Start the WSADATA
+
+  if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ){
+    return 0; /* not done; check WSAGetLastError() for error number */
+  };
+
+  return 1; /* Initialized */
+}
+
 int w32CeaseAndDesist(pid_t pid)
 {
   HANDLE h;
@@ -311,7 +327,7 @@ int inet_aton(const char *cp_arg, struct in_addr *addr)
 
 int fork(void)
 {
-  return ENOSYS;
+  return -1;
 /*   PROCESS_INFORMATION procinfo;
   STARTUPINFO sinfo;
   OFBitmanipTemplate<char>::zeroMem((char *)&sinfo, sizeof(sinfo));

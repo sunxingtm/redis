@@ -115,9 +115,11 @@ void vmInit(void) {
     server.io_processing = listCreate();
     server.io_processed = listCreate();
     server.io_ready_clients = listCreate();
+#ifndef _WIN32
     pthread_mutex_init(&server.io_mutex,NULL);
     pthread_mutex_init(&server.obj_freelist_mutex,NULL);
     pthread_mutex_init(&server.io_swapfile_mutex,NULL);
+#endif
     server.io_active_threads = 0;
     if (pipe(pipefds) == -1) {
         redisLog(REDIS_WARNING,"Unable to intialized VM: pipe(2): %s. Exiting."

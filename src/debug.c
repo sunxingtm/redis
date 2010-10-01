@@ -1,11 +1,11 @@
 #include "redis.h"
 #include "sha1.h"   /* SHA1 is used for DEBUG DIGEST */
 
-#ifdef _WIN32 
+#ifdef _WIN32
   #include <stdlib.h>
-  #include <stdio.h>  
-  #include <string.h>  
-  #include "win32fixes.h"  
+  #include <stdio.h>
+  #include <string.h>
+  #include "win32fixes.h"
 #else
   #include <arpa/inet.h>
 #endif
@@ -220,23 +220,14 @@ void debugCommand(redisClient *c) {
             strenc = strEncoding(val->encoding);
             addReplyStatusFormat(c,
                 "Value at:%p refcount:%d "
-#ifdef _WIN32  
-                "encoding:%s serializedlength:%"PRIu64"\r\n",                                     
-#else                                               
-                "encoding:%s serializedlength:%lld\r\n",
-#endif                                     
+                "encoding:%s serializedlength:%lld",
                 (void*)val, val->refcount,
                 strenc, (long long) rdbSavedObjectLen(val,NULL));
         } else {
             vmpointer *vp = (vmpointer*) val;
             addReplyStatusFormat(c,
-#ifdef _WIN32
-                "+Value swapped at: page %"PRIu64" "
-                "using %"PRIu64" pages\r\n",
-#else          
                 "+Value swapped at: page %llu "
-                "using %llu pages\r\n",
-#endif
+                "using %llu pages",
                 (unsigned long long) vp->page,
                 (unsigned long long) vp->usedpages);
         }

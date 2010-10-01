@@ -11,8 +11,8 @@ ifeq ($(uname_S),SunOS)
   DEBUG?= -g -rdynamic -ggdb   
 else
   ifeq ($(uname_S),MINGW32_NT-6.0)
-    CFLAGS?= -std=gnu99 $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
-    CCLINK?= -mthreads
+    CFLAGS?= -std=c99 $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+    CCLINK?= --stack=4194304 -mthreads
     LIBS?= -lws2_32 
     DEBUG?= -g -ggdb 
     CC=gcc

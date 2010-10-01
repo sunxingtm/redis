@@ -230,15 +230,16 @@ void oom(const char *msg) {
 }
 
 #ifdef _WIN32
+/* Open binary files */
+int _fmode = _O_BINARY;
+
 /* Misc Windows house keeping */
-void win32Cleanup() {
+void win32Cleanup(void) {
 
     /* Clean critical sections */
-    if (server.vm_enabled) {
-        pthread_mutex_destroy(&server.io_mutex);
-        pthread_mutex_destroy(&server.obj_freelist_mutex);
-        pthread_mutex_destroy(&server.io_swapfile_mutex);
-    }
+    pthread_mutex_destroy(&server.io_mutex);
+    pthread_mutex_destroy(&server.obj_freelist_mutex);
+    pthread_mutex_destroy(&server.io_swapfile_mutex);
 
     zmalloc_free_used_memory_mutex();
 
@@ -533,14 +534,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
-#ifdef _WIN32
-        if (prepareForShutdown() == REDIS_OK) {
-            win32Cleanup();
-            exit(0);
-        }
-#else
         if (prepareForShutdown() == REDIS_OK) exit(0);
-#endif
         redisLog(REDIS_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
     }
 
@@ -573,11 +567,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         redisLog(REDIS_VERBOSE,"%d clients connected (%d slaves), %zu bytes in use",
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-            #ifdef _WIN32
-            (long long unsigned int) zmalloc_used_memory()
-            #else
             zmalloc_used_memory()
-            #endif
         );
     }
 
@@ -696,7 +686,12 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
 void createSharedObjects(void) {
     int j;
-
+#ifdef _WIN32
+    /* Init mutex objects, since they will be used un create object call */
+    pthread_mutex_init(&server.io_mutex,NULL);
+    pthread_mutex_init(&server.obj_freelist_mutex,NULL);
+    pthread_mutex_init(&server.io_swapfile_mutex,NULL);
+#endif
     shared.crlf = createObject(REDIS_STRING,sdsnew("\r\n"));
     shared.ok = createObject(REDIS_STRING,sdsnew("+OK\r\n"));
     shared.err = createObject(REDIS_STRING,sdsnew("-ERR\r\n"));
@@ -773,7 +768,7 @@ void initServerConfig() {
     server.maxmemory = 0;
     server.vm_enabled = 0;
 #ifdef _WIN32
-    server.vm_swap_file = _tempnam("c:\\tmp", "redis-vm-");
+    server.vm_swap_file = zstrdup("redis-%p.vm");
 #else
     server.vm_swap_file = zstrdup("/tmp/redis-%p.vm");
 #endif
@@ -818,6 +813,8 @@ void initServer() {
 
     server.mainthread = pthread_self();
 #ifdef _WIN32
+    atexit((void(*)(void)) win32Cleanup);
+
     /*  Used to get length of saved object  */
     server.devnull = fopen("NUL","w");
     if (server.devnull == NULL) {
@@ -825,6 +822,7 @@ void initServer() {
         exit(1);
     }
 #else
+    /*  Used to get length of saved object  */
     server.devnull = fopen("/dev/null","w");
     if (server.devnull == NULL) {
         redisLog(REDIS_WARNING, "Can't open /dev/null: %s", server.neterr);
@@ -841,9 +839,6 @@ void initServer() {
     server.fd = anetTcpServer(server.neterr, server.port, server.bindaddr);
     if (server.fd == -1) {
         redisLog(REDIS_WARNING, "Opening TCP port: %s", server.neterr);
-#ifdef _WIN32
-        win32Cleanup();
-#endif
         exit(1);
     }
     for (j = 0; j < server.dbnum; j++) {
@@ -880,9 +875,6 @@ void initServer() {
         if (server.appendfd == -1) {
             redisLog(REDIS_WARNING, "Can't open the append-only file: %s",
                 strerror(errno));
-#ifdef _WIN32
-            win32Cleanup();
-#endif
             exit(1);
         }
     }
@@ -1183,11 +1175,7 @@ void bytesToHuman(char *s, unsigned long long n) {
 
     if (n < 1024) {
         /* Bytes */
-#ifdef _WIN32
-        sprintf(s,"%"PRIu64"B",n);
-#else
         sprintf(s,"%lluB",n);
-#endif
         return;
     } else if (n < (1024*1024)) {
         d = (double)n/(1024);
@@ -1235,34 +1223,18 @@ sds genRedisInfoString(void) {
         "connected_clients:%d\r\n"
         "connected_slaves:%d\r\n"
         "blocked_clients:%d\r\n"
-#ifdef _WIN32
-        "used_memory:%"PRIu64"\r\n"
-#else
         "used_memory:%zu\r\n"
-#endif
         "used_memory_human:%s\r\n"
         "mem_fragmentation_ratio:%.2f\r\n"
-#ifdef _WIN32
-        "changes_since_last_save:%"PRIu64"\r\n"
-#else
         "changes_since_last_save:%lld\r\n"
-#endif
         "bgsave_in_progress:%d\r\n"
         "last_save_time:%ld\r\n"
         "bgrewriteaof_in_progress:%d\r\n"
-#ifdef _WIN32
-        "total_connections_received:%"PRIu64"\r\n"
-        "total_commands_processed:%"PRIu64"\r\n"
-        "expired_keys:%"PRIu64"\r\n"
-        "hash_max_zipmap_entries:%"PRIu64"\r\n"
-        "hash_max_zipmap_value:%"PRIu64"\r\n"
-#else
         "total_connections_received:%lld\r\n"
         "total_commands_processed:%lld\r\n"
         "expired_keys:%lld\r\n"
         "hash_max_zipmap_entries:%zu\r\n"
         "hash_max_zipmap_value:%zu\r\n"
-#endif
         "pubsub_channels:%ld\r\n"
         "pubsub_patterns:%u\r\n"
         "vm_enabled:%d\r\n"
@@ -1329,15 +1301,6 @@ sds genRedisInfoString(void) {
     if (server.vm_enabled) {
         lockThreadedIO();
         info = sdscatprintf(info,
-#ifdef _WIN32
-            "vm_conf_max_memory:%"PRIu64"\r\n"
-            "vm_conf_page_size:%"PRIu64"\r\n"
-            "vm_conf_pages:%"PRIu64"\r\n"
-            "vm_stats_used_pages:%"PRIu64"\r\n"
-            "vm_stats_swapped_objects:%"PRIu64"\r\n"
-            "vm_stats_swappin_count:%"PRIu64"\r\n"
-            "vm_stats_swappout_count:%"PRIu64"\r\n"
-#else
             "vm_conf_max_memory:%llu\r\n"
             "vm_conf_page_size:%llu\r\n"
             "vm_conf_pages:%llu\r\n"
@@ -1345,7 +1308,6 @@ sds genRedisInfoString(void) {
             "vm_stats_swapped_objects:%llu\r\n"
             "vm_stats_swappin_count:%llu\r\n"
             "vm_stats_swappout_count:%llu\r\n"
-#endif
             "vm_stats_io_newjobs_len:%lu\r\n"
             "vm_stats_io_processing_len:%lu\r\n"
             "vm_stats_io_processed_len:%lu\r\n"
@@ -1372,14 +1334,8 @@ sds genRedisInfoString(void) {
         keys = dictSize(server.db[j].dict);
         vkeys = dictSize(server.db[j].expires);
         if (keys || vkeys) {
-#ifdef _WIN32
-            info = sdscatprintf(info, "db%d:keys=%"PRIu64",expires=%"PRIu64"\r\n",
-                j, keys, vkeys);
-#else
             info = sdscatprintf(info, "db%d:keys=%lld,expires=%lld\r\n",
                 j, keys, vkeys);
-#endif
-
         }
     }
     return info;
@@ -1574,9 +1530,6 @@ int main(int argc, char **argv) {
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeMain(server.el);
     aeDeleteEventLoop(server.el);
-#ifdef _WIN32
-    win32Cleanup();
-#endif
     return 0;
 }
 
@@ -1683,7 +1636,6 @@ void segvHandler(int sig) {
 
     /* free(messages); Don't call free() with possibly corrupted memory. */
     if (server.daemonize) unlink(server.pidfile);
-    win32Cleanup();
     _exit(0);
 }
 

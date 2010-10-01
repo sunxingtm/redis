@@ -625,6 +625,10 @@ void addReplyLongLong(redisClient *c, long long ll);
 void addReplyMultiBulkLen(redisClient *c, long length);
 void *dupClientReplyValue(void *o);
 
+#ifdef _WIN32 
+void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
+void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
+#else
 #ifdef __GNUC__
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
@@ -634,6 +638,7 @@ void addReplyStatusFormat(redisClient *c, const char *fmt, ...)
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
 void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
 #endif
+#endif /*  _WIN32 */
 
 /* List data type */
 void listTypeTryConversion(robj *subject, robj *value);

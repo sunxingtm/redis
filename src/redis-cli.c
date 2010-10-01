@@ -82,14 +82,7 @@ static int cliConnect(int force) {
     static int fd = ANET_ERR;
 
     if (fd == ANET_ERR || force) {
-#ifdef _WIN32
-        if (force) {
-          //shutdown(fd, SHUT_RD);
-          closesocket(fd);
-        }
-#else
         if (force) close(fd);
-#endif
         fd = anetTcpConnect(err,config.hostip,config.hostport);
         if (fd == ANET_ERR) {
             fprintf(stderr, "Could not connect to Redis at %s:%d: %s", config.hostip, config.hostport, err);
@@ -225,7 +218,6 @@ static int cliReadReply(int fd) {
         } else {
 #ifdef _WIN32
             printf("I/O error while reading from socket: %d",WSAGetLastError());
-            WSACleanup();
 #else
             printf("I/O error while reading from socket: %s",strerror(errno));
 #endif
@@ -248,9 +240,8 @@ static int cliReadReply(int fd) {
         return cliReadMultiBulkReply(fd);
     default:
 #ifdef _WIN32
-        /* Some more info */
-        // printf("protocol error, got '%c' (\\x%02x) as reply type byte", type, (unsigned char)type);
-        printf("protocol error, got (\\x%02x) as reply type byte", (unsigned char)type);
+        /* More readable info in case of specials */
+        printf("protocol error, got (x%02x) as reply type byte", (unsigned char)type);
 #else
         printf("protocol error, got '%c' as reply type byte", type);
 #endif
@@ -329,14 +320,7 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     while(repeat--) {
         anetWrite(fd,cmd,sdslen(cmd));
         while (config.monitor_mode) {
-#ifdef _WIN32
-            if (cliReadSingleLineReply(fd,0)) {
-                WSACleanup();
-                exit(1);
-            }
-#else
             if (cliReadSingleLineReply(fd,0)) exit(1);
-#endif
             printf("\n");
         }
 
@@ -365,9 +349,6 @@ static int parseOptions(int argc, char **argv) {
             char *ip = zmalloc(32);
             if (anetResolve(NULL,argv[i+1],ip) == ANET_ERR) {
                 printf("Can't resolve %s\n", argv[i]);
-#ifdef _WIN32
-                WSACleanup();
-#endif
                 exit(1);
             }
             config.hostip = ip;
@@ -466,9 +447,6 @@ static void repl() {
                 if (strcasecmp(argv[0],"quit") == 0 ||
                     strcasecmp(argv[0],"exit") == 0)
                 {
-#ifdef _WIN32
-                    WSACleanup();
-#endif
                     exit(0);
                 } else {
                     int err;
@@ -492,9 +470,6 @@ static void repl() {
         /* linenoise() returns malloc-ed lines like readline() */
         free(line);
     }
-#ifdef _WIN32
-    WSACleanup();
-#endif
     exit(0);
 }
 
@@ -529,8 +504,16 @@ int main(int argc, char **argv) {
     config.tty = isatty(fileno(stdout)) || (getenv("FAKETTY") != NULL);
     config.mb_sep = '\n';
 
-
 #ifdef _WIN32
+    // int _fmode = _O_BINARY;  // If redis cli will open files
+
+    if (!w32initWinSock()) {
+      printf("Winsock init error %ul", (unsigned long) WSAGetLastError());
+      exit(1);
+    };
+
+    atexit((void(*)(void)) WSACleanup);
+
     if (getenv("USERPROFILE") != NULL) {
         config.historyfile = malloc(256);
         snprintf(config.historyfile,256,"%s\\.rediscli_history",getenv("USERPROFILE"));

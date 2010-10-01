@@ -79,13 +79,8 @@ pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static void zmalloc_oom(size_t size) {
-#ifdef _WIN32
-    fprintf(stderr, "zmalloc: Out of memory trying to allocate %"PRIu64" bytes\n",
-        (long long unsigned int) size);
-#else
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
-#endif
     fflush(stderr);
     abort();
 }

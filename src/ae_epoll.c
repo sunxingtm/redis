@@ -2,11 +2,7 @@
  * Copyright (C) 2009-2010 Salvatore Sanfilippo - antirez@gmail.com
  * Released under the BSD license. See the COPYING file for more info. */
 
-#ifdef _WIN32
-    #include "win32fixes.h"
-#else
-    #include <sys/epoll.h>
-#endif
+#include <sys/epoll.h>
 
 typedef struct aeApiState {
     int epfd;

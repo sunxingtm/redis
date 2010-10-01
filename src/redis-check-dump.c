@@ -237,11 +237,7 @@ char *loadIntegerObject(int enctype) {
     /* convert val into string */
     char *buf;
     buf = malloc(sizeof(char) * 128);
-#ifdef _WIN32
-    sprintf(buf, "%"PRIu64, val);    
-#else    
     sprintf(buf, "%lld", val);
-#endif
     return buf;
 }
 
@@ -505,25 +501,15 @@ void printCentered(int indent, int width, char* body) {
 
 void printValid(uint64_t ops, uint64_t bytes) {
     char body[80];
-#ifdef _WIN32  
-    sprintf(body, "Processed %"PRIu64" valid opcodes (in %"PRIu64" bytes)",
-        (unsigned long long) ops, (unsigned long long) bytes);
-#else
     sprintf(body, "Processed %llu valid opcodes (in %llu bytes)",
         (unsigned long long) ops, (unsigned long long) bytes);
-#endif  
     printCentered(4, 80, body);
 }
 
 void printSkipped(uint64_t bytes, uint64_t offset) {
     char body[80];
-#ifdef _WIN32    
-    sprintf(body, "Skipped %"PRIu64" bytes (resuming at 0x%08"PRIX64")",
+    sprintf(body, "Skipped %ull bytes (resuming at 0x%08llx)",
         (unsigned long long) bytes, (unsigned long long) offset);
-#else  
-    sprintf(body, "Skipped %"PRIu64" bytes (resuming at 0x%08llx)",
-        (unsigned long long) bytes, (unsigned long long) offset);
-#endif    
     printCentered(4, 80, body);
 }
 
@@ -635,13 +621,8 @@ void process() {
     /* print summary on errors */
     if (num_errors) {
         printf("\n");
-#ifdef _WIN32  
-        printf("Total unprocessable opcodes: %"PRIu64"\n",
-            (unsigned long long) num_errors);      
-#else      
         printf("Total unprocessable opcodes: %llu\n",
             (unsigned long long) num_errors);      
-#endif      
     }
 }
 
@@ -651,6 +632,9 @@ int main(int argc, char **argv) {
         printf("Usage: %s <dump.rdb>\n", argv[0]);
         exit(0);
     }
+#ifdef _WIN32
+    int _fmode = _O_BINARY;  
+#endif    
 
     int fd;
     off_t size;

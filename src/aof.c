@@ -618,10 +618,24 @@ int rewriteAppendOnlyFileBackground(void) {
     } else {
         /* Parent */
         if (childpid == -1) {
+#ifdef WIN32
+            char tmpfile[256];
+            if (server.vm_enabled) vmReopenSwapFile();
+            snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
+
+            if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
+                backgroundRewriteDoneHandler(0);
+                return REDIS_OK;
+            } else {
+                backgroundRewriteDoneHandler(0);
+                return REDIS_ERR;
+            }
+#else
             redisLog(REDIS_WARNING,
                 "Can't rewrite append only file in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
+#endif
         }
         redisLog(REDIS_NOTICE,
             "Background append only file rewriting started by pid %d",childpid);
@@ -672,7 +686,11 @@ void backgroundRewriteDoneHandler(int statloc) {
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) server.bgrewritechildpid);
         fd = open(tmpfile,O_WRONLY|O_APPEND);
         if (fd == -1) {
+#ifdef _WIN32
+            redisLog(REDIS_WARNING, "Not able to open the temp append only file (%s) produced by the child: %s", tmpfile, strerror(errno));
+#else
             redisLog(REDIS_WARNING, "Not able to open the temp append only file produced by the child: %s", strerror(errno));
+#endif
             goto cleanup;
         }
         /* Flush our data... */

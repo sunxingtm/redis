@@ -6,10 +6,8 @@ By Steve Reid <steve@edmweb.com>
 */
 
 #ifdef _WIN32
-   /* #define u_int32_t unsigned long */
    #include <stdint.h>    
    #define u_int32_t uint32_t
-   /**/
 #endif
 typedef struct {
     u_int32_t state[5];

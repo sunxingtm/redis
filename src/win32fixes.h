@@ -23,17 +23,28 @@
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <sys/time.h>
+  #include <fcntl.h> /*  _O_BINARY */
+
+  //Misc
+  #ifdef __STRICT_ANSI__
+    #define _exit exit
+    #define fileno(__F) ((__F)->_file)
+
+    #define strcasecmp lstrcmpiA
+    //#define strncasecmp StrCmpNIC
+
+    #define fseeko(stream, offset, origin) fseek(stream, offset, origin)
+    #define ftello(stream) ftell(stream)
+  #else
+    #define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
+    #define ftello(stream) ftello64(stream)
+  #endif
 
   #define inline __inline
 
-  //Misc
   #define sleep(x) Sleep((x)*1000)
   #define random() rand()
   #define pipe(fds) _pipe(fds, 5000, _O_BINARY)
-
-  //Files
-  #define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
-  #define ftello(stream) ftello64(stream)
 
   //Prcesses
   #define waitpid(pid,statusp,options) _cwait (statusp, pid, WAIT_CHILD)
@@ -137,8 +148,6 @@ struct sigaction {
  int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 
   // Socekts
-  //#define EINTR WSAEINTR
-  //#define EAGAIN WSAEWOULDBLOCK
   #define EMSGSIZE WSAEMSGSIZE
   #define EAFNOSUPPORT WSAEAFNOSUPPORT
   #define EWOULDBLOCK WSAEWOULDBLOCK
@@ -199,12 +208,16 @@ struct sigaction {
   int kill(pid_t pid, int sig);
   int fsync (int fd);
   pid_t wait3(int *stat_loc, int options, void *rusage);
+
   int w32CeaseAndDesist(pid_t pid);
+  int w32initWinSock(void);
  // int inet_aton(const char *cp_arg, struct in_addr *addr)
 
   /* redis-check-dump  */
   void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset);
   int munmap(void *start, size_t length);
+
+  int fork(void);
 
 #endif /* WIN32 */
 #endif /* WIN32FIXES_H */

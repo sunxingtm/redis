@@ -536,6 +536,9 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 #ifdef _WIN32
                 nwritten = send(fd,c->buf+c->sentlen,c->bufpos-c->sentlen,0);
                 if (nwritten == -1) errno = WSAGetLastError();
+                if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+                        errno = EAGAIN;
+                }
 #else
                 nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
 #endif
@@ -567,6 +570,9 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 #ifdef _WIN32
             nwritten = send( fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen, 0);
             if (nwritten == -1) errno = WSAGetLastError();
+            if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+                errno = EAGAIN;
+            }
 #else
             nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
 #endif
@@ -591,10 +597,6 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (nwritten == -1) {
         if (errno == EAGAIN) {
             nwritten = 0;
-#ifdef _WIN32
-        } else if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
-            nwritten = 0;
-#endif
         } else {
             redisLog(REDIS_VERBOSE,
                 "Error writing to client: %s", strerror(errno));

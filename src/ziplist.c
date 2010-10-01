@@ -778,11 +778,7 @@ void ziplistRepr(unsigned char *zl) {
                 fwrite(p,entry.len,1,stdout);
             }
         } else {
-#ifdef _WIN32
-            printf("%"PRId64, (long long) zipLoadInteger(p,entry.encoding));
-#else
             printf("%lld", (long long) zipLoadInteger(p,entry.encoding));
-#endif
         }
         printf("\n");
         p += entry.len;
