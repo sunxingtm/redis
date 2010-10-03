@@ -51,6 +51,8 @@ proc kill_server config {
             puts "Waiting for process $pid to exit..."
         }
         catch {exec kill $pid}
+        catch {exec tskill $pid}  # windows 
+        
         after 10
     }
 
