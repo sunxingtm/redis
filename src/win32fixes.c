@@ -10,42 +10,38 @@
 
 int w32initWinSock(void) {
 
-  WSADATA t_wsa; // WSADATA structure
-  WORD wVers; // version number
-  int iError; // error number
+    WSADATA t_wsa; // WSADATA structure
+    WORD wVers; // version number
+    int iError; // error number
 
-  wVers = MAKEWORD(2, 2); // Set the version number to 2.2
-  iError = WSAStartup(wVers, &t_wsa); // Start the WSADATA
+    wVers = MAKEWORD(2, 2); // Set the version number to 2.2
+    iError = WSAStartup(wVers, &t_wsa); // Start the WSADATA
 
-  if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ){
-    return 0; /* not done; check WSAGetLastError() for error number */
-  };
+    if(iError != NO_ERROR || LOBYTE(t_wsa.wVersion) != 2 || HIBYTE(t_wsa.wVersion) != 2 ) {
+        return 0; /* not done; check WSAGetLastError() for error number */
+    };
 
-  return 1; /* Initialized */
+    return 1; /* Initialized */
 }
 
-int w32CeaseAndDesist(pid_t pid)
-{
-  HANDLE h;
+int w32CeaseAndDesist(pid_t pid) {
 
-  h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+    HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
 
-  /* invalid process; no access rights; etc   */
-  if (h == NULL)
-    return errno = EINVAL;
+    /* invalid process; no access rights; etc   */
+    if (h == NULL)
+        return errno = EINVAL;
 
-  if (!TerminateProcess(h, 127))
-    return errno = EINVAL;
+    if (!TerminateProcess(h, 127))
+        return errno = EINVAL;
 
-  errno = WaitForSingleObject(h, INFINITE);
+    errno = WaitForSingleObject(h, INFINITE);
+    CloseHandle(h);
 
-  CloseHandle(h);
-
-  return 0;
+    return 0;
 }
 
-int sigaction(int sig, struct sigaction *in, struct sigaction *out)
-{
+int sigaction(int sig, struct sigaction *in, struct sigaction *out) {
     REDIS_NOTUSED(out);
 
     /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
@@ -58,16 +54,16 @@ int sigaction(int sig, struct sigaction *in, struct sigaction *out)
     return 0;
 }
 
-int kill(pid_t pid, int sig)
-{
+int kill(pid_t pid, int sig) {
 
   if (sig == SIGKILL) {
+
     HANDLE h = OpenProcess(PROCESS_TERMINATE, 0, pid);
-    if (!TerminateProcess(h, 127))
-    {
-      errno = EINVAL; /* GetLastError() */
-      CloseHandle(h);
-      return -1;
+
+    if (!TerminateProcess(h, 127)) {
+        errno = EINVAL; /* GetLastError() */
+        CloseHandle(h);
+        return -1;
     };
 
     CloseHandle(h);
@@ -79,103 +75,86 @@ int kill(pid_t pid, int sig)
   };
 }
 
-int fsync (int fd)
-{
-  HANDLE h = (HANDLE) _get_osfhandle (fd);
-  DWORD err;
+int fsync (int fd) {
+    HANDLE h = (HANDLE) _get_osfhandle (fd);
+    DWORD err;
 
-  if (h == INVALID_HANDLE_VALUE)
-    {
-      errno = EBADF;
-      return -1;
+    if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
     }
 
-  if (!FlushFileBuffers (h))
-    {
-     /* Translate some Windows errors into rough approximations of Unix
-       * errors.  MSDN is useless as usual - in this case it doesn't
-       * document the full range of errors.
-       */
-      err = GetLastError ();
-      switch (err)
-       {
-         /* eg. Trying to fsync a tty. */
-       case ERROR_INVALID_HANDLE:
-         errno = EINVAL;
-         break;
+    if (!FlushFileBuffers (h)) {
+        /* Windows error -> Unix */
+        err = GetLastError ();
+        switch (err) {
+            case ERROR_INVALID_HANDLE:
+            errno = EINVAL;
+            break;
 
-       default:
-         errno = EIO;
-       }
-      return -1;
+            default:
+            errno = EIO;
+        }
+        return -1;
     }
 
-  return 0;
+    return 0;
 }
 
-pid_t wait3(int *stat_loc, int options, void *rusage)
-{
+pid_t wait3(int *stat_loc, int options, void *rusage) {
     REDIS_NOTUSED(stat_loc);
     REDIS_NOTUSED(options);
     REDIS_NOTUSED(rusage);
     return waitpid((pid_t) -1, 0, WAIT_FLAGS);
 }
 
-int rpl_setsockopt(int socket, int level, int optname, const void *optval,
-              socklen_t optlen)
-{
-  return (setsockopt)(socket, level, optname, optval, optlen);
+/* Holder for more complex windows sockets */
+int replace_setsockopt(int socket, int level, int optname, const void *optval, socklen_t optlen) {
+    return (setsockopt)(socket, level, optname, optval, optlen);
+}
+
+/* Rename which works when file exists */
+int replace_rename(const char *src, const char *dst) {
+
+    if (MoveFileEx(src, dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH))
+        return 0;
+    else
+        /* On error we will return generic eroor code without GetLastError() */
+        return EIO;
 }
 
 /* mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0); */
-void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset)
-{
+void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) {
 	HANDLE h;
 	void *data;
 
     REDIS_NOTUSED(offset);
 
-	if ((flags != MAP_SHARED) || (prot != PROT_READ))
-    {
+	if ((flags != MAP_SHARED) || (prot != PROT_READ)) {
 	  /*  Not supported  in this port */
       return MAP_FAILED;
     };
 
-	h = CreateFileMapping(
-        (HANDLE)_get_osfhandle(fd),
-        NULL,
-        PAGE_READONLY,
-        0,
-        0,
-        NULL);
+	h = CreateFileMapping((HANDLE)_get_osfhandle(fd),
+                        NULL,PAGE_READONLY,0,0,NULL);
 
-	if (!h)
-		return MAP_FAILED;
+	if (!h) return MAP_FAILED;
 
-	data = MapViewOfFileEx(
-        h,
-        FILE_MAP_READ,
-        0,
-        0,
-        length,
-        start);
+	data = MapViewOfFileEx(h, FILE_MAP_READ,0,0,length,start);
 
 	CloseHandle(h);
 
-    if (!data)
-      return MAP_FAILED;
+    if (!data) return MAP_FAILED;
 
 	return data;
 }
 
-int munmap(void *start, size_t length)
-{
+int munmap(void *start, size_t length) {
     REDIS_NOTUSED(length);
 	return !UnmapViewOfFile(start);
 }
 
-static unsigned __stdcall win32_proxy_threadproc(void *arg)
-{
+static unsigned __stdcall win32_proxy_threadproc(void *arg) {
     void (*func)(void*) = arg;
     func(NULL);
 
@@ -184,8 +163,8 @@ static unsigned __stdcall win32_proxy_threadproc(void *arg)
 }
 
 int pthread_create(pthread_t *thread, const void *unused,
-		   void *(*start_routine)(void*), void *arg)
-{
+		   void *(*start_routine)(void*), void *arg) {
+
     REDIS_NOTUSED(unused);
     HANDLE h;
 
@@ -209,17 +188,15 @@ int pthread_create(pthread_t *thread, const void *unused,
 }
 
 int pthread_detach (pthread_t thread) {
-     REDIS_NOTUSED(thread);
-     return 0; /* noop */
+    REDIS_NOTUSED(thread);
+    return 0; /* noop */
   }
 
-pthread_t pthread_self(void)
-{
+pthread_t pthread_self(void) {
 	return GetCurrentThreadId();
 }
 
-int pthread_sigmask(int how, const sigset_t *set, sigset_t *oset)
-{
+int pthread_sigmask(int how, const sigset_t *set, sigset_t *oset) {
     REDIS_NOTUSED(set);
     REDIS_NOTUSED(oset);
     switch (how) {
@@ -228,17 +205,16 @@ int pthread_sigmask(int how, const sigset_t *set, sigset_t *oset)
       case SIG_SETMASK:
            break;
       default:
-        errno = EINVAL;
-        return -1;
-  }
+            errno = EINVAL;
+            return -1;
+    }
 
   errno = ENOSYS;
   return -1;
 }
 
 /*
-int inet_aton(const char *cp_arg, struct in_addr *addr)
-{
+int inet_aton(const char *cp_arg, struct in_addr *addr) {
 	register unsigned long val;
 	register int base, n;
 	register unsigned char c;
@@ -325,8 +301,7 @@ int inet_aton(const char *cp_arg, struct in_addr *addr)
 }
 */
 
-int fork(void)
-{
+int fork(void) {
   return -1;
 /*   PROCESS_INFORMATION procinfo;
   STARTUPINFO sinfo;

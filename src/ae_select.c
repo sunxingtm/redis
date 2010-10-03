@@ -31,16 +31,26 @@ static void aeApiFree(aeEventLoop *eventLoop) {
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
 
-    if (mask & AE_READABLE) FD_SET((u_int) fd,&state->rfds);
-    if (mask & AE_WRITABLE) FD_SET((u_int) fd,&state->wfds);
+#ifdef _WIN32
+    if (mask & AE_READABLE) FD_SET((SOCKET) fd,&state->rfds);
+    if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&state->wfds);
+#else
+    if (mask & AE_READABLE) FD_SET(fd,&state->rfds);
+    if (mask & AE_WRITABLE) FD_SET(fd,&state->wfds);
+#endif
     return 0;
 }
 
 static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
 
-    if (mask & AE_READABLE) FD_CLR((u_int) fd,&state->rfds);
-    if (mask & AE_WRITABLE) FD_CLR((u_int) fd,&state->wfds);
+#ifdef _WIN32
+    if (mask & AE_READABLE) FD_CLR((SOCKET) fd,&state->rfds);
+    if (mask & AE_WRITABLE) FD_CLR((SOCKET) fd,&state->wfds);
+#else
+    if (mask & AE_READABLE) FD_CLR(fd,&state->rfds);
+    if (mask & AE_WRITABLE) FD_CLR(fd,&state->wfds);
+#endif
 }
 
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {

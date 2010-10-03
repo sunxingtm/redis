@@ -159,10 +159,13 @@ struct sigaction {
   #define EBADFD WSAENOTSOCK
   #define EOPNOTSUPP WSAEOPNOTSUPP
 
-  #define setsockopt(a,b,c,d,e) rpl_setsockopt(a,b,c,d,e)
+  #define setsockopt(a,b,c,d,e) replace_setsockopt(a,b,c,d,e)
 
-  int rpl_setsockopt(int socket, int level, int optname,
+  int replace_setsockopt(int socket, int level, int optname,
                      const void *optval, socklen_t optlen);
+
+  #define rename(a,b) replace_rename(a,b)
+  int replace_rename(const char *src, const char *dest);
 
 
   //threads avoiding pthread.h

@@ -38,6 +38,7 @@
 
 #ifdef _WIN32
   #include "win32fixes.h"
+  #include "redis.h"
 #endif
 
 #include "ae.h"
@@ -365,8 +366,13 @@ int aeWait(int fd, int mask, long long milliseconds) {
     FD_ZERO(&wfds);
     FD_ZERO(&efds);
 
-    if (mask & AE_READABLE) FD_SET((u_int) fd,&rfds);
-    if (mask & AE_WRITABLE) FD_SET((u_int) fd,&wfds);
+#ifdef _WIN32
+    if (mask & AE_READABLE) FD_SET((SOCKET) fd,&rfds);
+    if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&wfds);
+#else
+    if (mask & AE_READABLE) FD_SET(fd,&rfds);
+    if (mask & AE_WRITABLE) FD_SET(fd,&wfds);
+#endif
     if ((retval = select(fd+1, &rfds, &wfds, &efds, &tv)) > 0) {
         if (FD_ISSET(fd,&rfds)) retmask |= AE_READABLE;
         if (FD_ISSET(fd,&wfds)) retmask |= AE_WRITABLE;

@@ -444,17 +444,9 @@ int rdbSave(char *filename) {
 
     /* Use RENAME to make sure the DB file is changed atomically only
      * if the generate DB file is ok. */
-#ifdef _WIN32
-    remove("tmpdump");
-    rename(filename, "tmpdump");
-    remove(filename);
-#endif
     if (rename(tmpfile,filename) == -1) {
         redisLog(REDIS_WARNING,"Error moving temp DB file on the final destination: %s", strerror(errno));
         unlink(tmpfile);
-#ifdef _WIN32
-        rename(filename, "tmpdump");
-#endif
         return REDIS_ERR;
     }
     redisLog(REDIS_NOTICE,"DB saved on disk");

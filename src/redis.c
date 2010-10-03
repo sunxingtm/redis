@@ -1257,33 +1257,40 @@ sds genRedisInfoString(void) {
         listLength(server.slaves),
         server.blpop_blocked_clients,
         #ifdef _WIN32
-          (long long unsigned int) zmalloc_used_memory(),
+            (size_t) zmalloc_used_memory(),
+            hmem,
+            zmalloc_get_fragmentation_ratio(),
+            server.dirty,
+            (int) (server.bgsavechildpid != -1),
+            (time_t) server.lastsave,
+            (int) ((server.bgrewritechildpid != -1) ? 1 : 0),
+            (long long) server.stat_numconnections,
+            (long long) server.stat_numcommands,
+            (long long) server.stat_expiredkeys,
+            (long long) server.hash_max_zipmap_entries,
+            (long long) server.hash_max_zipmap_value,
+            dictSize(server.pubsub_channels),
+            listLength(server.pubsub_patterns),
+            (int) (server.vm_enabled != 0),
+            ((server.masterhost == NULL) ? "master" : "slave")
         #else
-          zmalloc_used_memory(),
+            zmalloc_used_memory(),
+            hmem,
+            zmalloc_get_fragmentation_ratio(),
+            server.dirty,
+            server.bgsavechildpid != -1,
+            server.lastsave,
+            server.bgrewritechildpid != -1,
+            server.stat_numconnections,
+            server.stat_numcommands,
+            server.stat_expiredkeys,
+            server.hash_max_zipmap_entries,
+            server.hash_max_zipmap_value,
+            dictSize(server.pubsub_channels),
+            listLength(server.pubsub_patterns),
+            server.vm_enabled != 0,
+            server.masterhost == NULL ? "master" : "slave"
         #endif
-        hmem,
-        zmalloc_get_fragmentation_ratio(),
-        server.dirty,
-        server.bgsavechildpid != -1,
-        server.lastsave,
-        server.bgrewritechildpid != -1,
-        server.stat_numconnections,
-        server.stat_numcommands,
-        server.stat_expiredkeys,
-        #ifdef _WIN32
-          (long long unsigned int) server.hash_max_zipmap_entries,
-        #else
-           server.hash_max_zipmap_entries,
-        #endif
-        #ifdef _WIN32
-          (long long unsigned int) server.hash_max_zipmap_value,
-        #else
-          server.hash_max_zipmap_value,
-        #endif
-        dictSize(server.pubsub_channels),
-        listLength(server.pubsub_patterns),
-        server.vm_enabled != 0,
-        server.masterhost == NULL ? "master" : "slave"
     );
     if (server.masterhost) {
         info = sdscatprintf(info,

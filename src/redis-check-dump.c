@@ -6,6 +6,7 @@
 #ifdef _WIN32
   #include <inttypes.h>
   #include "win32fixes.h"
+  int _fmode = _O_BINARY;  
 #else
   #include <sys/mman.h>
   #include <arpa/inet.h>  
@@ -632,9 +633,6 @@ int main(int argc, char **argv) {
         printf("Usage: %s <dump.rdb>\n", argv[0]);
         exit(0);
     }
-#ifdef _WIN32
-    int _fmode = _O_BINARY;  
-#endif    
 
     int fd;
     off_t size;

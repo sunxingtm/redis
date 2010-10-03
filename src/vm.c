@@ -74,7 +74,7 @@ void vmInit(void) {
 #ifdef _WIN32
 
     // LockFile(pFile->h, RESERVED_BYTE, 0, 1, 0)
-    if(!LockFile((HANDLE) _get_osfhandle(server.vm_fd), (0x40000001), 0, 1, 0) ){
+    if(!LockFile((HANDLE) _get_osfhandle(server.vm_fd), (0x40000001), 0, 1, 0) ) {
         redisLog(REDIS_WARNING,
             "Can't lock the swap file at '%s': %s. Make sure it is not used by another Redis instance.", server.vm_swap_file, strerror(errno));
         WSACleanup();
@@ -98,7 +98,11 @@ void vmInit(void) {
     server.vm_stats_swapouts = 0;
     server.vm_stats_swapins = 0;
     totsize = server.vm_pages*server.vm_page_size;
+#ifdef _WIN32
+    redisLog(REDIS_NOTICE,"Allocating %lld bytes of swap file",(long long) totsize);
+#else
     redisLog(REDIS_NOTICE,"Allocating %lld bytes of swap file",totsize);
+#endif
     if (ftruncate(server.vm_fd,totsize) == -1) {
         redisLog(REDIS_WARNING,"Can't ftruncate swap file: %s. Exiting.",
             strerror(errno));
@@ -116,6 +120,7 @@ void vmInit(void) {
     server.io_processed = listCreate();
     server.io_ready_clients = listCreate();
 #ifndef _WIN32
+    /* moved to InitSharedObjecsts since they are used there */
     pthread_mutex_init(&server.io_mutex,NULL);
     pthread_mutex_init(&server.obj_freelist_mutex,NULL);
     pthread_mutex_init(&server.io_swapfile_mutex,NULL);

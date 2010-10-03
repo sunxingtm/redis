@@ -160,6 +160,7 @@ int syncRead(int fd, char *ptr, ssize_t size, int timeout) {
             totread += nread;
         }
         if ((time(NULL)-start) > timeout) {
+
             errno = ETIMEDOUT;
             return -1;
         }
@@ -251,6 +252,10 @@ void syncCommand(redisClient *c) {
     c->flags |= REDIS_SLAVE;
     c->slaveseldb = 0;
     listAddNodeTail(server.slaves,c);
+#ifdef _WIN32
+   /* Since WIN32 won't fork(), nut instead do Save() we must manualy call this */
+   updateSlavesWaitingBgsave(REDIS_OK);
+#endif
     return;
 }
 
@@ -430,12 +435,13 @@ int syncWithMaster(void) {
     /* Issue the SYNC command */
     if (syncWrite(fd,"SYNC \r\n",7,5) == -1) {
 #ifdef _WIN32
+        redisLog(REDIS_WARNING,"I/O error writing to MASTER: %d", WSAGetLastError());
         closesocket(fd);
 #else
         close(fd);
-#endif
         redisLog(REDIS_WARNING,"I/O error writing to MASTER: %s",
             strerror(errno));
+#endif
         return REDIS_ERR;
     }
     /* Read the bulk write count */
@@ -489,7 +495,11 @@ int syncWithMaster(void) {
     while(dumpsize) {
         int nread, nwritten;
 
+#ifdef _WIN32
+        nread = recv(fd,buf,(dumpsize < 1024)?dumpsize:1024, 0);
+#else
         nread = read(fd,buf,(dumpsize < 1024)?dumpsize:1024);
+#endif
         if (nread <= 0) {
             redisLog(REDIS_WARNING,"I/O error trying to sync with MASTER: %s",
                 (nread == -1) ? strerror(errno) : "connection lost");
