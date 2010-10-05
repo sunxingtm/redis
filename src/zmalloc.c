@@ -179,12 +179,16 @@ size_t zmalloc_used_memory(void) {
 
 #ifdef _WIN32
 void zmalloc_free_used_memory_mutex(void) {
+
     if (zmalloc_thread_safe)
-      pthread_mutex_destroy(&used_memory_mutex);
+        pthread_mutex_destroy(&used_memory_mutex);
 }
 
 void zmalloc_enable_thread_safeness(void) {
-    if (!zmalloc_thread_safe) pthread_mutex_init(&used_memory_mutex,0);
+
+    if (!zmalloc_thread_safe)
+        pthread_mutex_init(&used_memory_mutex,0);
+
     zmalloc_thread_safe = 1;
 }
 #else

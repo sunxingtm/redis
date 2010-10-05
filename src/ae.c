@@ -53,7 +53,11 @@
     #ifdef HAVE_KQUEUE
     #include "ae_kqueue.c"
     #else
-    #include "ae_select.c"
+    #ifdef _WIN32
+        #include "ae_ws2.c"
+    #else
+        #include "ae_select.c"
+    #endif
     #endif
 #endif
 
@@ -233,7 +237,11 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
         if (now_sec > te->when_sec ||
             (now_sec == te->when_sec && now_ms >= te->when_ms))
         {
+#ifdef _WIN32
+            long long retval;
+#else
             int retval;
+#endif
 
             id = te->id;
             retval = te->timeProc(eventLoop, id, te->clientData);

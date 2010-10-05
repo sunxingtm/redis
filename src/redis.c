@@ -1197,7 +1197,9 @@ sds genRedisInfoString(void) {
     time_t uptime = time(NULL)-server.stat_starttime;
     int j;
     char hmem[64];
-#ifndef _WIN32
+#ifdef _WIN32
+    char *role = ((server.masterhost == NULL) ? "master\0" : "slave\0");
+#else
     struct rusage self_ru, c_ru;
 
     getrusage(RUSAGE_SELF, &self_ru);
@@ -1272,7 +1274,7 @@ sds genRedisInfoString(void) {
             dictSize(server.pubsub_channels),
             listLength(server.pubsub_patterns),
             (int) (server.vm_enabled != 0),
-            ((server.masterhost == NULL) ? "master" : "slave")
+            role
         #else
             zmalloc_used_memory(),
             hmem,

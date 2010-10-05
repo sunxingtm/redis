@@ -146,9 +146,16 @@ void vmInit(void) {
     pthread_attr_setstacksize(&server.io_threads_attr, stacksize);
 
     /* Listen for events in the threaded I/O pipe */
+#ifdef _WIN32
+    /* We need to pass flag that notifies Api that file descriptor is pipe */
+    if (aeCreateFileEvent(server.el, server.io_ready_pipe_read, AE_READABLE | AE_PIPE,
+        vmThreadedIOCompletedJob, NULL) == AE_ERR)
+        oom("creating file event");
+#else
     if (aeCreateFileEvent(server.el, server.io_ready_pipe_read, AE_READABLE,
         vmThreadedIOCompletedJob, NULL) == AE_ERR)
         oom("creating file event");
+#endif
 }
 
 /* Mark the page as used */
