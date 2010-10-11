@@ -75,7 +75,6 @@ int anetNonBlock(char *err, int fd)
   };
 
   return ANET_OK;
-
 #else
     int flags;
 
@@ -127,11 +126,11 @@ int anetResolve(char *err, char *host, char *ipbuf)
 {
     struct sockaddr_in sa;
 #ifdef _WIN32
-    long inAddress;
+    unsigned long inAddress;
 
     sa.sin_family = AF_INET;
     inAddress = inet_addr(host);
-    if (inAddress == 0) {
+    if (inAddress == INADDR_NONE || inAddress == INADDR_ANY) {
 #else
     sa.sin_family = AF_INET;
     if (inet_aton(host, &sa.sin_addr) == 0) {
@@ -184,10 +183,10 @@ static int anetTcpGenericConnect(char *err, char *addr, int port, int flags)
     sa.sin_port = htons(port);
 
 #ifdef _WIN32
-    long inAddress;
+    unsigned long inAddress;
 
     inAddress = inet_addr(addr);
-    if (inAddress == 0) {
+    if (inAddress == INADDR_NONE || inAddress == INADDR_ANY) {
         struct hostent *he;
 
         he = gethostbyname(addr);
@@ -338,10 +337,10 @@ int anetTcpServer(char *err, int port, char *bindaddr)
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bindaddr) {
 #ifdef _WIN32
-        long inAddress;
+        unsigned long inAddress;
 
         inAddress = inet_addr(bindaddr);
-        if (inAddress == 0) {
+        if (inAddress == INADDR_NONE || inAddress == INADDR_ANY) {
             anetSetError(err, "Invalid bind address\n");
             closesocket(s);
             return ANET_ERR;
