@@ -179,7 +179,7 @@ size_t zmalloc_used_memory(void) {
 
 #ifdef _WIN32
 void zmalloc_free_used_memory_mutex(void) {
-
+    /* Windows fix: Callabe mutex destroy.  */
     if (zmalloc_thread_safe)
         pthread_mutex_destroy(&used_memory_mutex);
 }

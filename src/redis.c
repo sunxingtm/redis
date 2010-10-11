@@ -230,7 +230,7 @@ void oom(const char *msg) {
 }
 
 #ifdef _WIN32
-/* Open binary files */
+/* Windows fix: Open all in binary mode as default */
 int _fmode = _O_BINARY;
 
 /* Misc Windows house keeping */
@@ -600,7 +600,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, sp->seconds);
                 rdbSaveBackground(server.dbfilename);
-                break;
+#ifdef _WIN32
+               return 100;
+#else
+               break;
+#endif
             }
          }
     }
@@ -687,7 +691,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 void createSharedObjects(void) {
     int j;
 #ifdef _WIN32
-    /* Init mutex objects, since they will be used un create object call */
+    /* Windows fix: Init mutex objects, since they will be used un create object call */
     pthread_mutex_init(&server.io_mutex,NULL);
     pthread_mutex_init(&server.obj_freelist_mutex,NULL);
     pthread_mutex_init(&server.io_swapfile_mutex,NULL);
@@ -816,11 +820,12 @@ void initServer() {
     atexit((void(*)(void)) win32Cleanup);
 
     /*  Used to get length of saved object  */
-    server.devnull = fopen("NUL","w");
+    server.devnull = fopen("NUL","wb");
     if (server.devnull == NULL) {
         redisLog(REDIS_WARNING, "Can't open NUL device: %s", server.neterr);
         exit(1);
     }
+ //   setvbuf(server.devnull, NULL, _IONBF, 0 );
 #else
     /*  Used to get length of saved object  */
     server.devnull = fopen("/dev/null","w");
@@ -1197,9 +1202,7 @@ sds genRedisInfoString(void) {
     time_t uptime = time(NULL)-server.stat_starttime;
     int j;
     char hmem[64];
-#ifdef _WIN32
-    char *role = ((server.masterhost == NULL) ? "master\0" : "slave\0");
-#else
+#ifndef _WIN32
     struct rusage self_ru, c_ru;
 
     getrusage(RUSAGE_SELF, &self_ru);
@@ -1269,12 +1272,12 @@ sds genRedisInfoString(void) {
             (long long) server.stat_numconnections,
             (long long) server.stat_numcommands,
             (long long) server.stat_expiredkeys,
-            (long long) server.hash_max_zipmap_entries,
-            (long long) server.hash_max_zipmap_value,
+            (size_t) server.hash_max_zipmap_entries,
+            (size_t) server.hash_max_zipmap_value,
             dictSize(server.pubsub_channels),
-            listLength(server.pubsub_patterns),
-            (int) (server.vm_enabled != 0),
-            role
+            (unsigned int)listLength(server.pubsub_patterns),
+            (int) (server.vm_enabled != 0) ? 1 : 0,
+            server.masterhost == 0 ? "master" : "slave"
         #else
             zmalloc_used_memory(),
             hmem,

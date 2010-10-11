@@ -302,39 +302,12 @@ int inet_aton(const char *cp_arg, struct in_addr *addr) {
 */
 
 int fork(void) {
+#ifndef _WIN32_FORK
   return -1;
-/*   PROCESS_INFORMATION procinfo;
-  STARTUPINFO sinfo;
-  OFBitmanipTemplate<char>::zeroMem((char *)&sinfo, sizeof(sinfo));
-  sinfo.cb = sizeof(sinfo);
-
-  // execute command (Attention: Do not pass DETACHED_PROCESS as sixth argument to the below
-  // called function because in such a case the execution of batch-files is not going to work.)
-  if( !CreateProcess(
-      NULL,
-      cmd.c_str(),
-      NULL,
-      NULL,
-      0,
-      0,
-      NULL,
-      NULL,
-      &sinfo,
-      &procinfo) )
-  {
-    fprintf( stderr, "storescp: Error while executing command '%s'.\n" , cmd.c_str() );
-  };
-
-  if (opt_execSync)
-  {
-      // Wait until child process exits (makes execution synchronous).
-      WaitForSingleObject(procinfo.hProcess, INFINITE);
-  }
-
-  // Close process and thread handles to avoid resource leak
-  CloseHandle(procinfo.hProcess);
-  CloseHandle(procinfo.hThread);
- */
+#else
+  /* TODO: Implement fork() for redis background writing */
+  return -1;
+#endif
  }
 /*
 int getrusage(int who, struct rusage * rusage) {

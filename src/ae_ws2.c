@@ -21,8 +21,9 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
 
     FD_ZERO(&state->rfds);
     FD_ZERO(&state->wfds);
-    eventLoop->apidata = state;
     state->vm_pipe = INVALID_HANDLE_VALUE;
+
+    eventLoop->apidata = state;
     return 0;
 }
 
@@ -34,10 +35,10 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
 
     if (mask & AE_PIPE) {
-      state->vm_pipe = (HANDLE) _get_osfhandle(fd);
+        state->vm_pipe = (HANDLE) _get_osfhandle(fd);
     } else {
-      if (mask & AE_READABLE) FD_SET((SOCKET) fd,&state->rfds);
-      if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&state->wfds);
+        if (mask & AE_READABLE) FD_SET((SOCKET) fd,&state->rfds);
+        if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&state->wfds);
     }
     return 0;
 }
@@ -46,10 +47,10 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
 
     if (mask & AE_PIPE) {
-      state->vm_pipe = INVALID_HANDLE_VALUE;
+        state->vm_pipe = INVALID_HANDLE_VALUE;
     } else {
-      if (mask & AE_READABLE) FD_CLR((SOCKET) fd,&state->rfds);
-      if (mask & AE_WRITABLE) FD_CLR((SOCKET) fd,&state->wfds);
+        if (mask & AE_READABLE) FD_CLR((SOCKET) fd,&state->rfds);
+        if (mask & AE_WRITABLE) FD_CLR((SOCKET) fd,&state->wfds);
     }
 }
 
@@ -65,10 +66,8 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
                 &state->_rfds,&state->_wfds,NULL,tvp);
 
     if (state->vm_pipe != INVALID_HANDLE_VALUE) {
-
-       if (PeekNamedPipe(state->vm_pipe, NULL, 0, NULL, &pipe_is_on, NULL)) {
-
-        if (pipe_is_on) retval++;
+        if (PeekNamedPipe(state->vm_pipe, NULL, 0, NULL, &pipe_is_on, NULL)) {
+            if (pipe_is_on) retval++;
        }
     }
 

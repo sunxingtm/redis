@@ -208,6 +208,7 @@
 
 /* We can print the stacktrace, so our assert is defined this way: */
 #ifdef _WIN32
+  /* Windows fix: I just added two blanks. MinGW GCC bug? */
   #define redisAssert(_e) ((_e) ? (void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
 #else
   #define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
@@ -625,7 +626,7 @@ void addReplyLongLong(redisClient *c, long long ll);
 void addReplyMultiBulkLen(redisClient *c, long length);
 void *dupClientReplyValue(void *o);
 
-#ifdef _WIN32 
+#ifdef _WIN32
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
 void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
 #else

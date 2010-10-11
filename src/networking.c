@@ -396,11 +396,11 @@ void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (server.maxclients && listLength(server.clients) > server.maxclients) {
         char *err = "-ERR max number of clients reached\r\n";
 
+       /* That's a best effort error message, don't check write errors */
 #ifdef _WIN32
         if (send(c->fd,err,strlen(err),0) == -1) {
         }
 #else
-       /* That's a best effort error message, don't check write errors */
         if (write(c->fd,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
@@ -825,10 +825,12 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (nread < 0) {
         errno = WSAGetLastError();
         if (errno == WSAECONNRESET) {
+            /* Windows fix: Not an error, intercept it.  */
             redisLog(REDIS_VERBOSE, "Client closed connection");
             freeClient(c);
             return;
         } else if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+            /* Windows fix: Intercept winsock slang for EAGAIN */
             errno = EAGAIN;
             nread = -1; /* Winsock can send ENOENT instead EAGAIN */
         }
