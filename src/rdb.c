@@ -344,7 +344,10 @@ int rdbSaveObject(FILE *fp, robj *o) {
 off_t rdbSavedObjectLen(robj *o, FILE *fp) {
     if (fp == NULL) fp = server.devnull;
     rewind(fp);
-    redisAssert(rdbSaveObject(fp,o) != 1);
+    redisAssert(rdbSaveObject(fp,o) != -1);
+#ifdef _WIN32
+    fflush(fp);
+#endif
     return ftello(fp);
 }
 
@@ -371,11 +374,7 @@ int rdbSave(char *filename) {
         waitEmptyIOJobsQueue();
 
     snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
-#ifdef _WIN32
-    fp = fopen(tmpfile,"w+b");
-#else
     fp = fopen(tmpfile,"w");
-#endif
     if (!fp) {
         redisLog(REDIS_WARNING, "Failed saving the DB: %s", strerror(errno));
         return REDIS_ERR;
@@ -483,12 +482,17 @@ int rdbSaveBackground(char *filename) {
 #ifdef _WIN32
             /* On WIN32 fork() is empty function which always return -1 */
             /* So, on WIN32, let's just save in foreground. */
-            if (server.vm_enabled) vmReopenSwapFile();
+            redisLog(REDIS_NOTICE,"Foregroud saving started by pid %d", getpid());
+            server.bgsavechildpid = getpid();
+            updateDictResizePolicy();
+
             if (rdbSave(filename) == REDIS_OK) {
                 backgroundSaveDoneHandler(0);
                 return REDIS_OK;
             } else {
-                backgroundSaveDoneHandler(0);
+                redisLog(REDIS_WARNING,"Can't save in background: spoon err: %s",
+                    strerror(errno));
+                backgroundSaveDoneHandler(0xff);
                 return REDIS_ERR;
             }
 #else
