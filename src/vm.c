@@ -120,7 +120,7 @@ void vmInit(void) {
     server.io_processed = listCreate();
     server.io_ready_clients = listCreate();
 #ifndef _WIN32
-    /* moved to InitSharedObjecsts since they are used there */
+    /* moved to InitSharedObjecsts since they are first time used there */
     pthread_mutex_init(&server.io_mutex,NULL);
     pthread_mutex_init(&server.obj_freelist_mutex,NULL);
     pthread_mutex_init(&server.io_swapfile_mutex,NULL);
@@ -147,7 +147,7 @@ void vmInit(void) {
 
     /* Listen for events in the threaded I/O pipe */
 #ifdef _WIN32
-    /* We need to pass flag that notifies Api that file descriptor is pipe */
+    /* Windows fux: need to pass flag that notifies Api that file descriptor is pipe */
     if (aeCreateFileEvent(server.el, server.io_ready_pipe_read, AE_READABLE | AE_PIPE,
         vmThreadedIOCompletedJob, NULL) == AE_ERR)
         oom("creating file event");
@@ -286,7 +286,17 @@ int vmWriteObjectOnSwap(robj *o, off_t page) {
             strerror(errno));
         return REDIS_ERR;
     }
+#ifdef _WIN32
+    if (rdbSaveObject(server.vm_fp,o) == -1) {
+        if (server.vm_enabled) pthread_mutex_unlock(&server.io_swapfile_mutex);
+        redisLog(REDIS_WARNING,
+            "Critical VM problem in rdbWriteObjectOnSwap failed saving object: %s",
+            strerror(errno));
+        return REDIS_ERR;
+    }
+#else
     rdbSaveObject(server.vm_fp,o);
+#endif
     fflush(server.vm_fp);
     if (server.vm_enabled) pthread_mutex_unlock(&server.io_swapfile_mutex);
     return REDIS_OK;
@@ -610,15 +620,31 @@ void vmThreadedIOCompletedJob(aeEventLoop *el, int fd, void *privdata,
 
     /* For every byte we read in the read side of the pipe, there is one
      * I/O job completed to process. */
+#ifndef _WIN32
     while((retval = read(fd,buf,1)) == 1) {
+#else
+    DWORD pipe_is_on = 0;
+
+    while (1) {
+        retval = 0;
+        /*Windows fix: We need to peek pipe, since read would block. */
+        if (!PeekNamedPipe((HANDLE) _get_osfhandle(fd), NULL, 0, NULL, &pipe_is_on, NULL))
+           break;
+
+        /* No data on pipe */
+        if (!pipe_is_on)
+            break;
+
+        if ((retval = read(fd,buf,1)) != 1)
+            break;
+#endif
         iojob *j;
         listNode *ln;
         struct dictEntry *de;
 
-        redisLog(REDIS_DEBUG,"Processing I/O completed job");
-
         /* Get the processed element (the oldest one) */
         lockThreadedIO();
+        redisLog(REDIS_DEBUG,"Processing I/O completed job");
         redisAssert(listLength(server.io_processed) != 0);
         if (toprocess == -1) {
             toprocess = (listLength(server.io_processed)*REDIS_MAX_COMPLETED_JOBS_PROCESSED)/100;
@@ -848,9 +874,11 @@ void *IOThreadEntryPoint(void *arg) {
         j->thread = pthread_self();
         listAddNodeTail(server.io_processing,j);
         ln = listLast(server.io_processing); /* We use ln later to remove it */
-        unlockThreadedIO();
+
         redisLog(REDIS_DEBUG,"Thread %ld got a new job (type %d): %p about key '%s'",
             (long) pthread_self(), j->type, (void*)j, (char*)j->key->ptr);
+
+        unlockThreadedIO();
 
         /* Process the Job */
         if (j->type == REDIS_IOJOB_LOAD) {
@@ -858,7 +886,12 @@ void *IOThreadEntryPoint(void *arg) {
             j->val = vmReadObjectFromSwap(j->page,vp->vtype);
         } else if (j->type == REDIS_IOJOB_PREPARE_SWAP) {
 #ifdef _WIN32
-            j->pages = rdbSavedObjectPages(j->val,NULL);
+//            lockThreadedIO();
+            FILE *fp = fopen("nul","w+b");
+            setvbuf(fp, NULL, _IONBF, 0 );
+            j->pages = rdbSavedObjectPages(j->val,fp);
+            fclose(fp);
+//            unlockThreadedIO();
 #else
             FILE *fp = fopen("/dev/null","w+");
             j->pages = rdbSavedObjectPages(j->val,fp);
