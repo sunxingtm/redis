@@ -41,6 +41,7 @@
 
 #ifdef _WIN32
   #include "win32fixes.h"
+  int fmode = _O_BINARY;
 #endif
 
 #include "ae.h"
@@ -529,6 +530,10 @@ int showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData
 
 int main(int argc, char **argv) {
     client c;
+
+#ifdef _WIN32
+    w32initWinSock();
+#endif  
 
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);

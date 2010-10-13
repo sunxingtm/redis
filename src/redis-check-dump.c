@@ -16,6 +16,42 @@
 #include <limits.h>
 #include "lzf.h"
 
+#ifdef _WIN32
+
+/* File maping used in redis-check-dump */
+/* mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0); */
+void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) {
+	HANDLE h;
+	void *data;
+
+    (void)offset;
+
+	if ((flags != MAP_SHARED) || (prot != PROT_READ)) {
+	  /*  Not supported  in this port */
+      return MAP_FAILED;
+    };
+
+	h = CreateFileMapping((HANDLE)_get_osfhandle(fd),
+                        NULL,PAGE_READONLY,0,0,NULL);
+
+	if (!h) return MAP_FAILED;
+
+	data = MapViewOfFileEx(h, FILE_MAP_READ,0,0,length,start);
+
+	CloseHandle(h);
+
+    if (!data) return MAP_FAILED;
+
+	return data;
+}
+
+/* Unmap file mapping */
+int munmap(void *start, size_t length) {
+    (void) length;
+    return !UnmapViewOfFile(start);
+}
+#endif
+
 /* Object types */
 #define REDIS_STRING 0
 #define REDIS_LIST 1
