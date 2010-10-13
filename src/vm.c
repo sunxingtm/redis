@@ -133,7 +133,11 @@ void vmInit(void) {
     }
     server.io_ready_pipe_read = pipefds[0];
     server.io_ready_pipe_write = pipefds[1];
+#ifndef _WIN32
+    /* Windows distincts pipe and socket destriptors */
+    /* We will use blocking pipe, with peek before blocking read */
     redisAssert(anetNonBlock(NULL,server.io_ready_pipe_read) != ANET_ERR);
+#endif
     /* LZF requires a lot of stack */
     pthread_attr_init(&server.io_threads_attr);
     pthread_attr_getstacksize(&server.io_threads_attr, &stacksize);
@@ -147,7 +151,7 @@ void vmInit(void) {
 
     /* Listen for events in the threaded I/O pipe */
 #ifdef _WIN32
-    /* Windows fux: need to pass flag that notifies Api that file descriptor is pipe */
+    /* Windows fix: need to pass flag that notifies Api that file descriptor is pipe */
     if (aeCreateFileEvent(server.el, server.io_ready_pipe_read, AE_READABLE | AE_PIPE,
         vmThreadedIOCompletedJob, NULL) == AE_ERR)
         oom("creating file event");
