@@ -26,7 +26,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include "redis.h"
 
 #ifdef HAVE_BACKTRACE
@@ -36,22 +35,32 @@
 
 #include <time.h>
 #include <signal.h>
-#include <sys/wait.h>
+
+#ifdef _WIN32
+  #include <stdlib.h>
+  #include <string.h>
+  #include <errno.h>
+  #include <stdio.h>
+  #include "win32fixes.h"
+#else
+  #include <sys/wait.h>
+  #include <arpa/inet.h>
+  #include <sys/resource.h>
+  #include <sys/uio.h>
+  #include <pthread.h>
+#endif
+
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <arpa/inet.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/uio.h>
 #include <limits.h>
 #include <float.h>
 #include <math.h>
-#include <pthread.h>
-#include <sys/resource.h>
+
 
 /* Our shared "common" objects */
 
@@ -185,7 +194,6 @@ struct redisCommand readonlyCommandTable[] = {
 };
 
 /*============================ Utility functions ============================ */
-
 void redisLog(int level, const char *fmt, ...) {
     va_list ap;
     FILE *fp;
@@ -220,6 +228,25 @@ void oom(const char *msg) {
     sleep(1);
     abort();
 }
+
+#ifdef _WIN32
+/* Windows fix: Open all in binary mode as default */
+int _fmode = _O_BINARY;
+
+/* Misc Windows house keeping */
+void win32Cleanup(void) {
+
+    /* Clean critical sections */
+    pthread_mutex_destroy(&server.io_mutex);
+    pthread_mutex_destroy(&server.obj_freelist_mutex);
+    pthread_mutex_destroy(&server.io_swapfile_mutex);
+
+    zmalloc_free_used_memory_mutex();
+
+    /* Clear winsocks */
+    WSACleanup();
+}
+#endif /* _WIN32 */
 
 /*====================== Hash table type implementation  ==================== */
 
@@ -540,7 +567,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         redisLog(REDIS_VERBOSE,"%d clients connected (%d slaves), %zu bytes in use",
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-            zmalloc_used_memory());
+            zmalloc_used_memory()
+        );
     }
 
     /* Close connections of timedout clients */
@@ -572,7 +600,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, sp->seconds);
                 rdbSaveBackground(server.dbfilename);
-                break;
+#ifdef _WIN32
+               return 100;
+#else
+               break;
+#endif
             }
          }
     }
@@ -658,7 +690,12 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
 void createSharedObjects(void) {
     int j;
-
+#ifdef _WIN32
+    /* Windows fix: Init mutex objects, since they will be used un create object call */
+    pthread_mutex_init(&server.io_mutex,NULL);
+    pthread_mutex_init(&server.obj_freelist_mutex,NULL);
+    pthread_mutex_init(&server.io_swapfile_mutex,NULL);
+#endif
     shared.crlf = createObject(REDIS_STRING,sdsnew("\r\n"));
     shared.ok = createObject(REDIS_STRING,sdsnew("+OK\r\n"));
     shared.err = createObject(REDIS_STRING,sdsnew("-ERR\r\n"));
@@ -734,7 +771,11 @@ void initServerConfig() {
     server.blpop_blocked_clients = 0;
     server.maxmemory = 0;
     server.vm_enabled = 0;
+#ifdef _WIN32
+    server.vm_swap_file = zstrdup("redis-%p.vm");
+#else
     server.vm_swap_file = zstrdup("/tmp/redis-%p.vm");
+#endif
     server.vm_page_size = 256;          /* 256 bytes per page */
     server.vm_pages = 1024*1024*100;    /* 104 millions of pages */
     server.vm_max_memory = 1024LL*1024*1024*1; /* 1 GB of RAM */
@@ -775,11 +816,24 @@ void initServer() {
     setupSigSegvAction();
 
     server.mainthread = pthread_self();
+#ifdef _WIN32
+    atexit((void(*)(void)) win32Cleanup);
+
+    /*  Used to get length of saved object  */
+    server.devnull = fopen("NUL","wb");
+    if (server.devnull == NULL) {
+        redisLog(REDIS_WARNING, "Can't open NUL device: %s", server.neterr);
+        exit(1);
+    }
+ //   setvbuf(server.devnull, NULL, _IONBF, 0 );
+#else
+    /*  Used to get length of saved object  */
     server.devnull = fopen("/dev/null","w");
     if (server.devnull == NULL) {
         redisLog(REDIS_WARNING, "Can't open /dev/null: %s", server.neterr);
         exit(1);
     }
+#endif
     server.clients = listCreate();
     server.slaves = listCreate();
     server.monitors = listCreate();
@@ -1203,22 +1257,41 @@ sds genRedisInfoString(void) {
         listLength(server.clients)-listLength(server.slaves),
         listLength(server.slaves),
         server.blpop_blocked_clients,
-        zmalloc_used_memory(),
-        hmem,
-        zmalloc_get_fragmentation_ratio(),
-        server.dirty,
-        server.bgsavechildpid != -1,
-        server.lastsave,
-        server.bgrewritechildpid != -1,
-        server.stat_numconnections,
-        server.stat_numcommands,
-        server.stat_expiredkeys,
-        server.hash_max_zipmap_entries,
-        server.hash_max_zipmap_value,
-        dictSize(server.pubsub_channels),
-        listLength(server.pubsub_patterns),
-        server.vm_enabled != 0,
-        server.masterhost == NULL ? "master" : "slave"
+        #ifdef _WIN32
+            (size_t) zmalloc_used_memory(),
+            hmem,
+            zmalloc_get_fragmentation_ratio(),
+            server.dirty,
+            (int) (server.bgsavechildpid != -1),
+            (time_t) server.lastsave,
+            (int) ((server.bgrewritechildpid != -1) ? 1 : 0),
+            (long long) server.stat_numconnections,
+            (long long) server.stat_numcommands,
+            (long long) server.stat_expiredkeys,
+            (size_t) server.hash_max_zipmap_entries,
+            (size_t) server.hash_max_zipmap_value,
+            dictSize(server.pubsub_channels),
+            (unsigned int)listLength(server.pubsub_patterns),
+            (int) (server.vm_enabled != 0) ? 1 : 0,
+            server.masterhost == 0 ? "master" : "slave"
+        #else
+            zmalloc_used_memory(),
+            hmem,
+            zmalloc_get_fragmentation_ratio(),
+            server.dirty,
+            server.bgsavechildpid != -1,
+            server.lastsave,
+            server.bgrewritechildpid != -1,
+            server.stat_numconnections,
+            server.stat_numcommands,
+            server.stat_expiredkeys,
+            server.hash_max_zipmap_entries,
+            server.hash_max_zipmap_value,
+            dictSize(server.pubsub_channels),
+            listLength(server.pubsub_patterns),
+            server.vm_enabled != 0,
+            server.masterhost == NULL ? "master" : "slave"
+        #endif
     );
     if (server.masterhost) {
         info = sdscatprintf(info,
@@ -1397,6 +1470,10 @@ void createPidFile(void) {
 }
 
 void daemonize(void) {
+
+#ifdef _WIN32
+  redisLog(REDIS_WARNING,"Windows does not support daemonize. Start Redis as service");
+#else
     int fd;
 
     if (fork() != 0) exit(0); /* parent exits */
@@ -1411,6 +1488,7 @@ void daemonize(void) {
         dup2(fd, STDERR_FILENO);
         if (fd > STDERR_FILENO) close(fd);
     }
+#endif
 }
 
 void version() {
@@ -1552,8 +1630,53 @@ void setupSigSegvAction(void) {
 }
 
 #else /* HAVE_BACKTRACE */
+#ifdef _WIN32
+/* MinGW singnal handlers without backtrace */
+void segvHandler(int sig) {
+    sds infostring;
+
+    redisLog(REDIS_WARNING,
+        "======= Ooops! Redis %s got signal: -%d- =======", REDIS_VERSION, sig);
+    infostring = genRedisInfoString();
+    redisLog(REDIS_WARNING, "%s",infostring);
+    /* It's not safe to sdsfree() the returned string under memory
+     * corruption conditions. Let it leak as we are going to abort */
+
+    /* free(messages); Don't call free() with possibly corrupted memory. */
+    if (server.daemonize) unlink(server.pidfile);
+    _exit(0);
+}
+
+void sigtermHandler(int sig) {
+    REDIS_NOTUSED(sig);
+
+    redisLog(REDIS_WARNING,"SIGTERM received, scheduling shutting down...");
+    server.shutdown_asap = 1;
+}
+
+void setupSigSegvAction(void) {
+    struct sigaction act;
+
+    sigemptyset (&act.sa_mask);
+    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
+     * is used. Otherwise, sa_handler is used */
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
+    act.sa_sigaction = segvHandler;
+    sigaction (SIGSEGV, &act, NULL);
+    sigaction (SIGBUS, &act, NULL);
+    sigaction (SIGFPE, &act, NULL);
+    sigaction (SIGILL, &act, NULL);
+    sigaction (SIGBUS, &act, NULL);
+
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
+    act.sa_handler = sigtermHandler;
+    sigaction (SIGTERM, &act, NULL);
+    return;
+}
+#else
 void setupSigSegvAction(void) {
 }
+#endif
 #endif /* HAVE_BACKTRACE */
 
 /* The End */

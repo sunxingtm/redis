@@ -39,6 +39,11 @@
 #include <signal.h>
 #include <assert.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+  int fmode = _O_BINARY;
+#endif
+
 #include "ae.h"
 #include "anet.h"
 #include "sds.h"
@@ -117,7 +122,11 @@ static void freeClient(client c) {
     aeDeleteFileEvent(config.el,c->fd,AE_READABLE);
     sdsfree(c->ibuf);
     sdsfree(c->obuf);
+#ifdef _WIN32
+    closesocket(c->fd);  
+#else  
     close(c->fd);
+#endif  
     zfree(c);
     config.liveclients--;
     ln = listSearchKey(config.clients,c);
@@ -226,8 +235,12 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask)
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
     REDIS_NOTUSED(mask);
-
-    nread = read(c->fd,buf,sizeof(buf));
+  
+#ifdef _WIN32
+    nread = recv(c->fd, buf, sizeof(buf),0);  
+#else  
+    nread = read(c->fd, buf, sizeof(buf));
+#endif  
     if (nread == -1) {
         fprintf(stderr, "Reading from socket: %s\n", strerror(errno));
         freeClient(c);
@@ -339,7 +352,11 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask)
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
         int len = sdslen(c->obuf) - c->written;
+#ifdef _WIN32      
+        int nwritten = send(c->fd, ptr, len,0);      
+#else      
         int nwritten = write(c->fd, ptr, len);
+#endif      
         if (nwritten == -1) {
             if (errno != EPIPE)
                 fprintf(stderr, "Writing to socket: %s\n", strerror(errno));
@@ -513,6 +530,10 @@ int showThroughput(struct aeEventLoop *eventLoop, long long id, void *clientData
 
 int main(int argc, char **argv) {
     client c;
+
+#ifdef _WIN32
+    w32initWinSock();
+#endif  
 
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
@@ -693,5 +714,8 @@ int main(int argc, char **argv) {
         printf("\n");
     } while(config.loop);
 
+#ifdef _WIN32
+    WSACleanup();
+#endif  
     return 0;
 }

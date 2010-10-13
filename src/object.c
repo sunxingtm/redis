@@ -1,5 +1,7 @@
 #include "redis.h"
-#include <pthread.h>
+#ifndef _WIN32
+  #include <pthread.h>
+#endif
 #include <math.h>
 
 robj *createObject(int type, void *ptr) {

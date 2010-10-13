@@ -1,6 +1,7 @@
 #include "redis.h"
 #include <ctype.h>
 #include <limits.h>
+#include <string.h>
 
 /* Glob-style pattern matching. */
 int stringmatchlen(const char *pattern, int patternLen,

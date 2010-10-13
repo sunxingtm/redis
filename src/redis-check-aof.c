@@ -6,6 +6,16 @@
 #include <sys/stat.h>
 #include "config.h"
 
+#ifdef _WIN32
+    #include "win32fixes.h"
+    #ifdef __STRICT_ANSI__
+      #define strncasecmp(x,y,l) strcmp(x,y)
+      //#define strncasecmp(x,y,l) (*(x)=(y) ? 1 : 0)
+    #endif
+
+    int _fmode = _O_BINARY;
+#endif
+
 #define ERROR(...) { \
     char __buf[1024]; \
     sprintf(__buf, __VA_ARGS__); \
@@ -118,9 +128,16 @@ long process(FILE *fp) {
 int main(int argc, char **argv) {
     char *filename;
     int fix = 0;
+#ifdef _WIN32
+    int assumeyes = 0;
+#endif
 
     if (argc < 2) {
+#ifdef _WIN32
+        printf("Usage: %s [--fix] [--yes] <file.aof>\n", argv[0]);
+#else
         printf("Usage: %s [--fix] <file.aof>\n", argv[0]);
+#endif
         exit(1);
     } else if (argc == 2) {
         filename = argv[1];
@@ -131,6 +148,24 @@ int main(int argc, char **argv) {
         }
         filename = argv[2];
         fix = 1;
+#ifdef _WIN32
+/* Windows fix to enable tests under mSysGit supplied tcl */
+/* This will add option --yes to assume yes on questions  */
+    } else if (argc == 4) {
+        if (strcmp(argv[1],"--fix") != 0) {
+            printf("Invalid argument: %s\n", argv[1]);
+            exit(1);
+        }
+
+        if (strcmp(argv[2],"--yes") != 0) {
+            printf("Invalid argument: %s\n", argv[2]);
+            exit(1);
+        }
+
+        filename = argv[3];
+        fix = 1;
+        assumeyes = 1;
+#endif
     } else {
         printf("Invalid arguments\n");
         exit(1);
@@ -139,6 +174,9 @@ int main(int argc, char **argv) {
     FILE *fp = fopen(filename,"r+");
     if (fp == NULL) {
         printf("Cannot open file: %s\n", filename);
+#ifdef _WIN32
+        printf("Error: %s\n", strerror(errno));
+#endif
         exit(1);
     }
 
@@ -158,6 +196,10 @@ int main(int argc, char **argv) {
     long diff = size-pos;
     if (diff > 0) {
         if (fix) {
+#ifdef _WIN32
+        /* Skip question if --yes supplied */
+        if (!assumeyes) {
+#endif
             char buf[2];
             printf("This will shrink the AOF from %ld bytes, with %ld bytes, to %ld bytes\n",size,diff,pos);
             printf("Continue? [y/N]: ");
@@ -166,6 +208,9 @@ int main(int argc, char **argv) {
                     printf("Aborting...\n");
                     exit(1);
             }
+#ifdef _WIN32
+        }
+#endif
             if (ftruncate(fileno(fp), pos) == -1) {
                 printf("Failed to truncate AOF\n");
                 exit(1);

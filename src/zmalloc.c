@@ -27,11 +27,16 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifdef _WIN32
+  #include <inttypes.h>
+  #include "win32fixes.h"
+#else
+  #include <pthread.h>
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 
 #include "config.h"
 
@@ -67,7 +72,11 @@
 
 static size_t used_memory = 0;
 static int zmalloc_thread_safe = 0;
+#ifdef _WIN32
+pthread_mutex_t used_memory_mutex;
+#else
 pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 static void zmalloc_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
@@ -168,9 +177,25 @@ size_t zmalloc_used_memory(void) {
     return um;
 }
 
+#ifdef _WIN32
+void zmalloc_free_used_memory_mutex(void) {
+    /* Windows fix: Callabe mutex destroy.  */
+    if (zmalloc_thread_safe)
+        pthread_mutex_destroy(&used_memory_mutex);
+}
+
+void zmalloc_enable_thread_safeness(void) {
+
+    if (!zmalloc_thread_safe)
+        pthread_mutex_init(&used_memory_mutex,0);
+
+    zmalloc_thread_safe = 1;
+}
+#else
 void zmalloc_enable_thread_safeness(void) {
     zmalloc_thread_safe = 1;
 }
+#endif
 
 /* Fragmentation = RSS / allocated-bytes */
 

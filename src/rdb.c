@@ -4,9 +4,15 @@
 #include <math.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/wait.h>
-#include <arpa/inet.h>
+
+#ifdef _WIN32
+  #include <errno.h>
+  #include "win32fixes.h"
+#else
+  #include <sys/resource.h>
+  #include <sys/wait.h>
+  #include <arpa/inet.h>
+#endif
 
 int rdbSaveType(FILE *fp, unsigned char type) {
     if (fwrite(&type,1,1,fp) == 0) return -1;
@@ -338,7 +344,10 @@ int rdbSaveObject(FILE *fp, robj *o) {
 off_t rdbSavedObjectLen(robj *o, FILE *fp) {
     if (fp == NULL) fp = server.devnull;
     rewind(fp);
-    redisAssert(rdbSaveObject(fp,o) != 1);
+    redisAssert(rdbSaveObject(fp,o) != -1);
+#ifdef _WIN32
+    fflush(fp);
+#endif
     return ftello(fp);
 }
 
@@ -390,7 +399,7 @@ int rdbSave(char *filename) {
             sds keystr = dictGetEntryKey(de);
             robj key, *o = dictGetEntryVal(de);
             time_t expiretime;
-            
+
             initStaticStringObject(key,keystr);
             expiretime = getExpire(db,&key);
 
@@ -470,9 +479,27 @@ int rdbSaveBackground(char *filename) {
     } else {
         /* Parent */
         if (childpid == -1) {
+#ifdef _WIN32
+            /* On WIN32 fork() is empty function which always return -1 */
+            /* So, on WIN32, let's just save in foreground. */
+            redisLog(REDIS_NOTICE,"Foregroud saving started by pid %d", getpid());
+            server.bgsavechildpid = getpid();
+            updateDictResizePolicy();
+
+            if (rdbSave(filename) == REDIS_OK) {
+                backgroundSaveDoneHandler(0);
+                return REDIS_OK;
+            } else {
+                redisLog(REDIS_WARNING,"Can't save in background: spoon err: %s",
+                    strerror(errno));
+                backgroundSaveDoneHandler(0xff);
+                return REDIS_ERR;
+            }
+#else
             redisLog(REDIS_WARNING,"Can't save in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
+#endif
         }
         redisLog(REDIS_NOTICE,"Background saving started by pid %d",childpid);
         server.bgsavechildpid = childpid;
@@ -802,6 +829,9 @@ int rdbLoad(char *filename) {
     time_t expiretime, now = time(NULL);
 
     fp = fopen(filename,"r");
+#ifdef _WIN32
+    if (!fp) redisLog(REDIS_WARNING,"Open data file %s: %s", filename, strerror(GetLastError()));
+#endif
     if (!fp) return REDIS_ERR;
     if (fread(buf,9,1,fp) == 0) goto eoferr;
     buf[9] = '\0';

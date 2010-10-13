@@ -39,6 +39,10 @@
 #include <errno.h>
 #include <sys/stat.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+#endif
+
 #include "anet.h"
 #include "sds.h"
 #include "adlist.h"
@@ -96,7 +100,11 @@ static sds cliReadLine(int fd) {
         char c;
         ssize_t ret;
 
+#ifdef _WIN32
+        ret = recv(fd,&c,1,0);
+#else
         ret = read(fd,&c,1);
+#endif
         if (ret <= 0) {
             sdsfree(line);
             return NULL;
@@ -208,7 +216,11 @@ static int cliReadReply(int fd) {
         {
             return ECONNRESET;
         } else {
+#ifdef _WIN32
+            printf("I/O error while reading from socket: %d",WSAGetLastError());
+#else
             printf("I/O error while reading from socket: %s",strerror(errno));
+#endif
             exit(1);
         }
     }
@@ -227,7 +239,12 @@ static int cliReadReply(int fd) {
     case '*':
         return cliReadMultiBulkReply(fd);
     default:
+#ifdef _WIN32
+        /* More readable info in case of specials */
+        printf("protocol error, got (x%02x) as reply type byte", (unsigned char)type);
+#else
         printf("protocol error, got '%c' as reply type byte", type);
+#endif
         return 1;
     }
 }
@@ -487,11 +504,28 @@ int main(int argc, char **argv) {
     config.tty = isatty(fileno(stdout)) || (getenv("FAKETTY") != NULL);
     config.mb_sep = '\n';
 
+#ifdef _WIN32
+    // int _fmode = _O_BINARY;  // If redis cli will open files
+
+    if (!w32initWinSock()) {
+      printf("Winsock init error %ul", (unsigned long) WSAGetLastError());
+      exit(1);
+    };
+
+    atexit((void(*)(void)) WSACleanup);
+
+    if (getenv("USERPROFILE") != NULL) {
+        config.historyfile = malloc(256);
+        snprintf(config.historyfile,256,"%s\\.rediscli_history",getenv("USERPROFILE"));
+        linenoiseHistoryLoad(config.historyfile);
+    }
+#else
     if (getenv("HOME") != NULL) {
         config.historyfile = malloc(256);
         snprintf(config.historyfile,256,"%s/.rediscli_history",getenv("HOME"));
         linenoiseHistoryLoad(config.historyfile);
     }
+#endif
 
     firstarg = parseOptions(argc,argv);
     argc -= firstarg;
@@ -501,7 +535,7 @@ int main(int argc, char **argv) {
         char *authargv[2];
         int dbnum = config.dbnum;
 
-        /* We need to save the real configured database number and set it to
+    /* We need to save the real configured database number and set it to
          * zero here, otherwise cliSendCommand() will try to perform the
          * SELECT command before the authentication, and it will fail. */
         config.dbnum = 0;

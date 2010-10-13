@@ -59,6 +59,10 @@
  * |1110____| - 1 byte
  *      Integer encoded as int64_t (8 bytes).
  */
+#ifdef _WIN32
+  #include <inttypes.h>
+  #include "win32fixes.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -755,7 +759,11 @@ void ziplistRepr(unsigned char *zl) {
             "} ",
             (long unsigned int)p,
             index,
+#ifdef _WIN32
+            (long int) (p-zl),
+#else
             p-zl,
+#endif
             entry.headersize+entry.len,
             entry.headersize,
             entry.prevrawlen,

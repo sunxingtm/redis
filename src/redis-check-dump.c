@@ -3,12 +3,54 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
+#ifdef _WIN32
+  #include <inttypes.h>
+  #include "win32fixes.h"
+  int _fmode = _O_BINARY;  
+#else
+  #include <sys/mman.h>
+  #include <arpa/inet.h>  
+#endif
 #include <string.h>
-#include <arpa/inet.h>
 #include <stdint.h>
 #include <limits.h>
 #include "lzf.h"
+
+#ifdef _WIN32
+
+/* File maping used in redis-check-dump */
+/* mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0); */
+void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) {
+	HANDLE h;
+	void *data;
+
+    (void)offset;
+
+	if ((flags != MAP_SHARED) || (prot != PROT_READ)) {
+	  /*  Not supported  in this port */
+      return MAP_FAILED;
+    };
+
+	h = CreateFileMapping((HANDLE)_get_osfhandle(fd),
+                        NULL,PAGE_READONLY,0,0,NULL);
+
+	if (!h) return MAP_FAILED;
+
+	data = MapViewOfFileEx(h, FILE_MAP_READ,0,0,length,start);
+
+	CloseHandle(h);
+
+    if (!data) return MAP_FAILED;
+
+	return data;
+}
+
+/* Unmap file mapping */
+int munmap(void *start, size_t length) {
+    (void) length;
+    return !UnmapViewOfFile(start);
+}
+#endif
 
 /* Object types */
 #define REDIS_STRING 0
@@ -503,7 +545,7 @@ void printValid(uint64_t ops, uint64_t bytes) {
 
 void printSkipped(uint64_t bytes, uint64_t offset) {
     char body[80];
-    sprintf(body, "Skipped %llu bytes (resuming at 0x%08llx)",
+    sprintf(body, "Skipped %ull bytes (resuming at 0x%08llx)",
         (unsigned long long) bytes, (unsigned long long) offset);
     printCentered(4, 80, body);
 }
@@ -538,7 +580,11 @@ void printErrorStack(entry *e) {
 
     /* display error stack */
     for (i = 0; i < errors.level; i++) {
+#ifdef _WIN32
+        printf("0x%08lx - %s\n", (long unsigned int)errors.offset[i], errors.error[i]);      
+#else      
         printf("0x%08lx - %s\n", errors.offset[i], errors.error[i]);
+#endif      
     }
 }
 
@@ -613,7 +659,7 @@ void process() {
     if (num_errors) {
         printf("\n");
         printf("Total unprocessable opcodes: %llu\n",
-            (unsigned long long) num_errors);
+            (unsigned long long) num_errors);      
     }
 }
 

@@ -8,6 +8,14 @@
 #include "solarisfixes.h"
 #endif
 
+#if defined _WIN32
+  #include <string.h>
+  #include <stdio.h>
+  #include "win32fixes.h"
+#else
+  #include <pthread.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +24,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <pthread.h>
+
 
 #include "ae.h"     /* Event driven programming library */
 #include "sds.h"    /* Dynamic safe strings */
@@ -199,7 +207,12 @@
 #define REDIS_OP_INTER 2
 
 /* We can print the stacktrace, so our assert is defined this way: */
-#define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#ifdef _WIN32
+  /* Windows fix: I just added two blanks. MinGW GCC bug? */
+  #define redisAssert(_e) ((_e) ? (void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#else
+  #define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#endif
 #define redisPanic(_e) _redisPanic(#_e,__FILE__,__LINE__),_exit(1)
 void _redisAssert(char *estr, char *file, int line);
 void _redisPanic(char *msg, char *file, int line);
@@ -613,6 +626,10 @@ void addReplyLongLong(redisClient *c, long long ll);
 void addReplyMultiBulkLen(redisClient *c, long length);
 void *dupClientReplyValue(void *o);
 
+#ifdef _WIN32
+void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
+void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
+#else
 #ifdef __GNUC__
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
@@ -622,6 +639,7 @@ void addReplyStatusFormat(redisClient *c, const char *fmt, ...)
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
 void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
 #endif
+#endif /*  _WIN32 */
 
 /* List data type */
 void listTypeTryConversion(robj *subject, robj *value);

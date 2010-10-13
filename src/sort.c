@@ -1,5 +1,6 @@
 #include "redis.h"
 #include "pqsort.h" /* Partial qsort for SORT+LIMIT */
+#include <string.h>
 
 redisSortOperation *createSortOperation(int type, robj *pattern) {
     redisSortOperation *so = zmalloc(sizeof(*so));

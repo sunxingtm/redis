@@ -36,6 +36,11 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+  #include "redis.h"
+#endif
+
 #include "ae.h"
 #include "zmalloc.h"
 #include "config.h"
@@ -48,7 +53,11 @@
     #ifdef HAVE_KQUEUE
     #include "ae_kqueue.c"
     #else
-    #include "ae_select.c"
+    #ifdef _WIN32
+        #include "ae_ws2.c"
+    #else
+        #include "ae_select.c"
+    #endif
     #endif
 #endif
 
@@ -228,7 +237,11 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
         if (now_sec > te->when_sec ||
             (now_sec == te->when_sec && now_ms >= te->when_ms))
         {
+#ifdef _WIN32
+            long long retval;
+#else
             int retval;
+#endif
 
             id = te->id;
             retval = te->timeProc(eventLoop, id, te->clientData);
@@ -361,8 +374,13 @@ int aeWait(int fd, int mask, long long milliseconds) {
     FD_ZERO(&wfds);
     FD_ZERO(&efds);
 
+#ifdef _WIN32
+    if (mask & AE_READABLE) FD_SET((SOCKET) fd,&rfds);
+    if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&wfds);
+#else
     if (mask & AE_READABLE) FD_SET(fd,&rfds);
     if (mask & AE_WRITABLE) FD_SET(fd,&wfds);
+#endif
     if ((retval = select(fd+1, &rfds, &wfds, &efds, &tv)) > 0) {
         if (FD_ISSET(fd,&rfds)) retmask |= AE_READABLE;
         if (FD_ISSET(fd,&wfds)) retmask |= AE_WRITABLE;
