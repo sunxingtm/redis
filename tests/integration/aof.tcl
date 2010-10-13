@@ -65,7 +65,7 @@ tags {"aof"} {
     } {*not valid*}
 
     test {Short read: Utility should be able to fix the AOF} {
-        exec echo y | src/redis-check-aof --fix $aof_path
+        exec src/redis-check-aof --fix --yes $aof_path
     } {*Successfully truncated AOF*}
 
     ## Test that the server can be started using the truncated AOF

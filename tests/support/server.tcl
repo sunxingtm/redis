@@ -51,8 +51,9 @@ proc kill_server config {
             puts "Waiting for process $pid to exit..."
         }
         catch {exec kill $pid}
-        catch {exec tskill $pid}  # windows 
-        
+	# windows
+        catch {exec tskill.exe $pid}
+
         after 10
     }
 
@@ -65,7 +66,11 @@ proc kill_server config {
 proc is_alive config {
     set pid [dict get $config pid]
     if {[catch {exec ps -p $pid} err]} {
-        return 0
+	if {[catch {exec tasklist.exe | grep ' $pid Console'} err]} {
+            return 0
+        } else {
+            return 1
+	}
     } else {
         return 1
     }
