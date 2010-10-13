@@ -25,3 +25,4 @@ vars.bat
 *.cbp
 *.script
 *.cbTemp
+bin/*
