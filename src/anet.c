@@ -68,7 +68,7 @@ int anetNonBlock(char *err, int fd)
   // If iMode = 0, blocking is enabled;
   // If iMode != 0, non-blocking mode is enabled.
   u_long iMode = 1;
-  if (!ioctlsocket(fd, FIONBIO, &iMode)) {
+  if (ioctlsocket(fd, FIONBIO, &iMode) == SOCKET_ERROR) {
     errno = WSAGetLastError();
     anetSetError(err, "ioctlsocket(FIONBIO): %d\n", errno);
     return ANET_ERR;
