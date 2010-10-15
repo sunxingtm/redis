@@ -44,7 +44,7 @@
 
   #define sleep(x) Sleep((x)*1000)
   #define random() rand()
-  #define pipe(fds) _pipe(fds, 5000, _O_BINARY)
+  #define pipe(fds) _pipe(fds, 8192, _O_BINARY|_O_NOINHERIT)
 
   //Prcesses
   #define waitpid(pid,statusp,options) _cwait (statusp, pid, WAIT_CHILD)

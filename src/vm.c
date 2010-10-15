@@ -632,8 +632,10 @@ void vmThreadedIOCompletedJob(aeEventLoop *el, int fd, void *privdata,
     while (1) {
         retval = 0;
         /*Windows fix: We need to peek pipe, since read would block. */
-        if (!PeekNamedPipe((HANDLE) _get_osfhandle(fd), NULL, 0, NULL, &pipe_is_on, NULL))
+        if (!PeekNamedPipe((HANDLE) _get_osfhandle(fd), NULL, 0, NULL, &pipe_is_on, NULL)) {
+           redisLog(REDIS_DEBUG,"PeekReadPipe failed %s", strerror(GetLastError()));
            break;
+        }
 
         /* No data on pipe */
         if (!pipe_is_on)
