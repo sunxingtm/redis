@@ -35,8 +35,10 @@ robj *lookupKey(redisDb *db, robj *key) {
                 if (notify) handleClientsBlockedOnSwappedKey(db,key);
             }
         }
+        server.stat_keyspace_hits++;
         return val;
     } else {
+        server.stat_keyspace_misses++;
         return NULL;
     }
 }
@@ -469,7 +471,6 @@ int expireIfNeeded(redisDb *db, robj *key) {
 
     /* Delete the key */
     server.stat_expiredkeys++;
-    server.dirty++;
     propagateExpire(db,key);
     return dbDelete(db,key);
 }

@@ -505,6 +505,10 @@ void activeExpireCycle(void) {
     }
 }
 
+void updateLRUClock(void) {
+    server.lruclock = (time(NULL)/REDIS_LRU_CLOCK_RESOLUTION) &
+                                                REDIS_LRU_CLOCK_MAX;
+}
 
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j, loops = server.cronloops++;
@@ -518,14 +522,18 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * To access a global var is faster than calling time(NULL) */
     server.unixtime = time(NULL);
     /* We have just 22 bits per object for LRU information.
-     * So we use an (eventually wrapping) LRU clock with minutes resolution.
-     * 2^22 minutes are more than 7 years.
+     * So we use an (eventually wrapping) LRU clock with 10 seconds resolution.
+     * 2^22 bits with 10 seconds resoluton is more or less 1.5 years.
      *
-     * Note that even if this will wrap after 7 years it's not a problem,
+     * Note that even if this will wrap after 1.5 years it's not a problem,
      * everything will still work but just some object will appear younger
-     * to Redis :)
+     * to Redis. But for this to happen a given object should never be touched
+     * for 1.5 years.
+     *
+     * Note that you can change the resolution altering the
+     * REDIS_LRU_CLOCK_RESOLUTION define.
      */
-    server.lruclock = (time(NULL)/60) & REDIS_LRU_CLOCK_MAX;
+    updateLRUClock();
 
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
@@ -766,6 +774,8 @@ void initServerConfig() {
     server.maxclients = 0;
     server.blpop_blocked_clients = 0;
     server.maxmemory = 0;
+    server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_LRU;
+    server.maxmemory_samples = 3;
     server.vm_enabled = 0;
 #ifdef _WIN32
     server.vm_swap_file = zstrdup("redis-%p.vm");
@@ -784,6 +794,7 @@ void initServerConfig() {
     server.set_max_intset_entries = REDIS_SET_MAX_INTSET_ENTRIES;
     server.shutdown_asap = 0;
 
+    updateLRUClock();
     resetServerSaveParams();
 
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
@@ -867,6 +878,8 @@ void initServer() {
     server.stat_numconnections = 0;
     server.stat_expiredkeys = 0;
     server.stat_starttime = time(NULL);
+    server.stat_keyspace_misses = 0;
+    server.stat_keyspace_hits = 0;
     server.unixtime = time(NULL);
     aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL);
     if (aeCreateFileEvent(server.el, server.fd, AE_READABLE,
@@ -1234,6 +1247,8 @@ sds genRedisInfoString(void) {
         "total_connections_received:%lld\r\n"
         "total_commands_processed:%lld\r\n"
         "expired_keys:%lld\r\n"
+        "keyspace_hits:%lld\r\n"
+        "keyspace_misses:%lld\r\n"
         "hash_max_zipmap_entries:%zu\r\n"
         "hash_max_zipmap_value:%zu\r\n"
         "pubsub_channels:%ld\r\n"
@@ -1267,6 +1282,8 @@ sds genRedisInfoString(void) {
             (long long) server.stat_numconnections,
             (long long) server.stat_numcommands,
             (long long) server.stat_expiredkeys,
+            (long long) server.stat_keyspace_hits,
+            (long long) server.stat_keyspace_misses,
             (size_t) server.hash_max_zipmap_entries,
             (size_t) server.hash_max_zipmap_value,
             dictSize(server.pubsub_channels),
@@ -1284,6 +1301,8 @@ sds genRedisInfoString(void) {
             server.stat_numconnections,
             server.stat_numcommands,
             server.stat_expiredkeys,
+            server.stat_keyspace_hits,
+            server.stat_keyspace_misses,
             server.hash_max_zipmap_entries,
             server.hash_max_zipmap_value,
             dictSize(server.pubsub_channels),
@@ -1401,10 +1420,93 @@ int tryFreeOneObjectFromFreelist(void) {
  * memory usage.
  */
 void freeMemoryIfNeeded(void) {
+    /* Remove keys accordingly to the active policy as long as we are
+     * over the memory limit. */
     while (server.maxmemory && zmalloc_used_memory() > server.maxmemory) {
         int j, k, freed = 0;
 
+        /* Basic strategy -- remove objects from the free list. */
         if (tryFreeOneObjectFromFreelist() == REDIS_OK) continue;
+
+        for (j = 0; j < server.dbnum; j++) {
+            long bestval;
+            sds bestkey = NULL;
+            struct dictEntry *de;
+            redisDb *db = server.db+j;
+            dict *dict;
+
+            if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
+                server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM)
+            {
+                dict = server.db[j].dict;
+            } else {
+                dict = server.db[j].expires;
+            }
+            if (dictSize(dict) == 0) continue;
+
+            /* volatile-random and allkeys-random policy */
+            if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM ||
+                server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_RANDOM)
+            {
+                de = dictGetRandomKey(dict);
+                bestkey = dictGetEntryKey(de);
+            }
+
+            /* volatile-lru and allkeys-lru policy */
+            else if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
+                server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
+            {
+                for (k = 0; k < server.maxmemory_samples; k++) {
+                    sds thiskey;
+                    long thisval;
+                    robj *o;
+
+                    de = dictGetRandomKey(dict);
+                    thiskey = dictGetEntryKey(de);
+                    o = dictGetEntryVal(de);
+                    thisval = estimateObjectIdleTime(o);
+
+                    /* Higher idle time is better candidate for deletion */
+                    if (bestkey == NULL || thisval > bestval) {
+                        bestkey = thiskey;
+                        bestval = thisval;
+                    }
+                }
+            }
+
+            /* volatile-ttl */
+            else if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
+                for (k = 0; k < server.maxmemory_samples; k++) {
+                    sds thiskey;
+                    long thisval;
+
+                    de = dictGetRandomKey(dict);
+                    thiskey = dictGetEntryKey(de);
+                    thisval = (long) dictGetEntryVal(de);
+
+                    /* Expire sooner (minor expire unix timestamp) is better
+                     * candidate for deletion */
+                    if (bestkey == NULL || thisval < bestval) {
+                        bestkey = thiskey;
+                        bestval = thisval;
+                    }
+                }
+            }
+
+            /* Finally remove the selected key. */
+            if (bestkey) {
+                robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
+                dbDelete(db,keyobj);
+                server.stat_expiredkeys++;
+                decrRefCount(keyobj);
+                freed++;
+            }
+        }
+        if (!freed) return; /* nothing to free... */
+    }
+
+    while(0) {
+        int j, k, freed = 0;
         for (j = 0; j < server.dbnum; j++) {
             int minttl = -1;
             sds minkey = NULL;
