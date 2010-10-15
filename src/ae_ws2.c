@@ -36,6 +36,8 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
 
     if (mask & AE_PIPE) {
         state->vm_pipe = (HANDLE) _get_osfhandle(fd);
+//        DWORD mode = PIPE_NOWAIT;
+//        SetNamedPipeHandleState(state->vm_pipe,&mode,NULL,NULL);
     } else {
         if (mask & AE_READABLE) FD_SET((SOCKET) fd,&state->rfds);
         if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&state->wfds);

@@ -813,6 +813,7 @@ void initServer() {
 
     server.mainthread = pthread_self();
 #ifdef _WIN32
+    srand(getpid());
     atexit((void(*)(void)) win32Cleanup);
 
     /*  Used to get length of saved object  */
