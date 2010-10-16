@@ -4,13 +4,15 @@
 
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+osname := $(shell uname -rs | cut -f 1-2 -d "." | cut -f 1 -d "-")
+
 OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)
   CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W -D__EXTENSIONS__ -D_XPG6
   CCLINK?= -ldl -lnsl -lsocket -lm -lpthread
   DEBUG?= -g -rdynamic -ggdb   
 else
-  ifeq ($(uname_S),MINGW32_NT-6.0)
+  ifeq ($(osname),MINGW32_NT)
     CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
     CCLINK?= --stack=4194304 -mthreads
     LIBS?= -lws2_32 
@@ -136,7 +138,7 @@ dep:
 	$(CC) -MM *.c
 
 test:
-	(cd ..; tclsh8.5 tests/test_helper.tcl --tags "${TAGS}")
+	(cd ..; tclsh85 tests/test_helper.tcl --tags "${TAGS}")
 
 bench:
 	./redis-benchmark

@@ -6,6 +6,10 @@ You can download prebuilt binaries here:
 
    http://github.com/dmajkic/redis/downloads
 
+(or at alternate location sice GitHub denied acces)
+
+   http://dl.dropbox.com/u/2931334/redis-2.1.4-win32.zip
+
 
 Building Redis on Windows
 -------------------------
