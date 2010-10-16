@@ -508,7 +508,7 @@ int main(int argc, char **argv) {
     // int _fmode = _O_BINARY;  // If redis cli will open files
 
     if (!w32initWinSock()) {
-      printf("Winsock init error %ul", (unsigned long) WSAGetLastError());
+      printf("Winsock init error %d", WSAGetLastError());
       exit(1);
     };
 
