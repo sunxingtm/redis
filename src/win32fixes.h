@@ -20,10 +20,11 @@
   #include <signal.h>
   #include <sys/types.h>
   #include <windows.h>
-  #include <winsock2.h>
+  #include <winsock2.h>  /* setsocketopt */
   #include <ws2tcpip.h>
   #include <sys/time.h>
-  #include <fcntl.h> /*  _O_BINARY */
+  #include <fcntl.h>    /* _O_BINARY */
+  #include <limits.h>  /* INT_MAX */
 
   //Misc
   #ifdef __STRICT_ANSI__
@@ -43,7 +44,9 @@
   #define inline __inline
 
   #define sleep(x) Sleep((x)*1000)
-  #define random() rand()
+  #define random() (long)(((int) (rand)() * (int) (rand)()) % INT_MAX)
+  #define rand() (int)(((int) (rand)() * (int) (rand)()) % INT_MAX)
+
   #define pipe(fds) _pipe(fds, 8192, _O_BINARY|_O_NOINHERIT)
 
   //Prcesses
@@ -167,7 +170,6 @@ struct sigaction {
   #define rename(a,b) replace_rename(a,b)
   int replace_rename(const char *src, const char *dest);
 
-
   //threads avoiding pthread.h
   #define pthread_mutex_t CRITICAL_SECTION
   #define pthread_attr_t int
@@ -178,7 +180,8 @@ struct sigaction {
     #define STACK_SIZE_PARAM_IS_A_RESERVATION 0x00010000
   #endif
 
-  #define pthread_mutex_init(a,b) (InitializeCriticalSection((a)), 0)
+  //#define pthread_mutex_init(a,b) (InitializeCriticalSection((a)), 0)
+  #define pthread_mutex_init(a,b) (InitializeCriticalSectionAndSpinCount((a), 0x80000400),0)
   #define pthread_mutex_destroy(a) DeleteCriticalSection((a))
   #define pthread_mutex_lock EnterCriticalSection
   #define pthread_mutex_unlock LeaveCriticalSection

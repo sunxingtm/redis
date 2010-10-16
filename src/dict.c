@@ -460,24 +460,14 @@ void dictReleaseIterator(dictIterator *iter)
 dictEntry *dictGetRandomKey(dict *d)
 {
     dictEntry *he, *orighe;
-#ifdef _WIN32
-    unsigned long h, r;
-#else
     unsigned int h;
-#endif
     int listlen, listele;
 
     if (dictSize(d) == 0) return NULL;
     if (dictIsRehashing(d)) _dictRehashStep(d);
     if (dictIsRehashing(d)) {
         do {
-#ifdef _WIN32
-            /* msvcrt has RANDOM_MAX as 7FFF */
-            r = (unsigned long) (rand() * rand());
-            h = r % (d->ht[0].size+d->ht[1].size);
-#else
             h = random() % (d->ht[0].size+d->ht[1].size);
-#endif
             he = (h >= d->ht[0].size) ? d->ht[1].table[h - d->ht[0].size] :
                                       d->ht[0].table[h];
         } while(he == NULL);

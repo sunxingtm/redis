@@ -114,7 +114,7 @@ pid_t wait3(int *stat_loc, int options, void *rusage) {
     return waitpid((pid_t) -1, 0, WAIT_FLAGS);
 }
 
-/* Placeholder for more complex windows sockets, does nothing */
+/* BSD sockets compatibile replacement */
 int replace_setsockopt(int socket, int level, int optname, const void *optval, socklen_t optlen) {
     return (setsockopt)(socket, level, optname, optval, optlen);
 }
