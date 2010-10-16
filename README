@@ -4,7 +4,7 @@ Win32 port of Redis server, client and utils
 It is made to be as close as possible to original unix version.
 You can download prebuilt binaries here: 
 
-   http://github.com/dmajkic/redis/archives/master
+   http://github.com/dmajkic/redis/downloads
 
 
 Building Redis on Windows
