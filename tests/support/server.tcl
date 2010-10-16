@@ -52,7 +52,13 @@ proc kill_server config {
         }
         catch {exec kill $pid}
 	# windows
-        catch {exec tskill.exe $pid}
+        if {[is_alive $config]} { 
+	    catch {exec tskill.exe $pid}
+            after 10
+	    if {[is_alive $config]} { 
+  	        catch {exec taskkill.exe -F -T -PID $pid}
+	    }
+	}
 
         after 10
     }
