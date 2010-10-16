@@ -47,6 +47,13 @@
   #define random() (long)(((int) (rand)() * (int) (rand)()) % INT_MAX)
   #define rand() (int)(((int) (rand)() * (int) (rand)()) % INT_MAX)
 
+  // Redis calls usleep(1) to give thread some time
+  // Sleep(0) should do the same on windows
+  // In other cases, usleep is called with milisec resolution,
+  // which can be directly translated to winapi Sleep()
+  #undef usleep
+  #define usleep(x) (x == 1) ? Sleep(0) : Sleep((int)((x)/1000))
+
   #define pipe(fds) _pipe(fds, 8192, _O_BINARY|_O_NOINHERIT)
 
   //Prcesses
