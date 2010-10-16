@@ -72,21 +72,21 @@
 #include "fmacros.h"
 
 #ifdef _WIN32
+  #include <unistd.h>
   #include "win32fixes.h"
   #define REDIS_NOTUSED(V) ((void) V)
 #else
   #include <termios.h>
   #include <unistd.h>
   #include <sys/ioctl.h>
+  #include <unistd.h>
 #endif
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <string.h>
 
 #define LINENOISE_DEFAULT_HISTORY_MAX_LEN 100

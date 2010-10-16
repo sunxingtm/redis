@@ -8,14 +8,6 @@
 #include "solarisfixes.h"
 #endif
 
-#if defined _WIN32
-  #include <string.h>
-  #include <stdio.h>
-  #include "win32fixes.h"
-#else
-  #include <pthread.h>
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +17,13 @@
 #include <errno.h>
 #include <inttypes.h>
 
+#if defined _WIN32
+  #include <string.h>
+  #include <stdio.h>
+  #include "win32fixes.h"
+#else
+  #include <pthread.h>
+#endif
 
 #include "ae.h"     /* Event driven programming library */
 #include "sds.h"    /* Dynamic safe strings */

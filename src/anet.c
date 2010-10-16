@@ -32,6 +32,7 @@
 
 #include <sys/types.h>
 #ifdef _WIN32
+  #include <unistd.h>
   #include "win32fixes.h"
 #else
   #include <sys/socket.h>
@@ -39,8 +40,8 @@
   #include <netinet/tcp.h>
   #include <arpa/inet.h>
   #include <netdb.h>
+  #include <unistd.h>
 #endif
-#include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
