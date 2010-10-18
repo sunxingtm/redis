@@ -331,11 +331,11 @@ static void disableRawMode(int fd) {
 
 /* At exit we'll try to fix the terminal to the initial conditions. */
 static void linenoiseAtExit(void) {
-
+#ifdef _WIN32
     SetConsoleMode(hIn, consolemode);
     CloseHandle(hOut);
     CloseHandle(hIn);
-
+#endif
     freeHistory();
 }
 
