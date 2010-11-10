@@ -1312,8 +1312,7 @@ sds genRedisInfoString(void) {
 #else
         0,
 #endif
-        server.loading,
-        server.appendonly,
+<<<<<<< HEAD
             server.dirty,
             server.bgsavechildpid != -1,
             server.lastsave,
@@ -1330,6 +1329,25 @@ sds genRedisInfoString(void) {
             server.vm_enabled != 0,
             server.masterhost == NULL ? "master" : "slave"
         #endif
+=======
+        server.loading,
+        server.appendonly,
+        server.dirty,
+        server.bgsavechildpid != -1,
+        server.lastsave,
+        server.bgrewritechildpid != -1,
+        server.stat_numconnections,
+        server.stat_numcommands,
+        server.stat_expiredkeys,
+        server.stat_keyspace_hits,
+        server.stat_keyspace_misses,
+        server.hash_max_zipmap_entries,
+        server.hash_max_zipmap_value,
+        dictSize(server.pubsub_channels),
+        listLength(server.pubsub_patterns),
+        server.vm_enabled != 0,
+        server.masterhost == NULL ? "master" : "slave"
+>>>>>>> upstream/master
     );
     if (server.masterhost) {
         info = sdscatprintf(info,

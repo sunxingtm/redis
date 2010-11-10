@@ -159,7 +159,8 @@
 /* Slave replication state - slave side */
 #define REDIS_REPL_NONE 0   /* No active replication */
 #define REDIS_REPL_CONNECT 1    /* Must connect to master */
-#define REDIS_REPL_CONNECTED 2  /* Connected to master */
+#define REDIS_REPL_TRANSFER 2    /* Receiving .rdb from master */
+#define REDIS_REPL_CONNECTED 3  /* Connected to master */
 
 /* Slave replication state - from the point of view of master
  * Note that in SEND_BULK and ONLINE state the slave receives new updates
@@ -215,6 +216,7 @@
 #define REDIS_MAXMEMORY_VOLATILE_RANDOM 2
 #define REDIS_MAXMEMORY_ALLKEYS_LRU 3
 #define REDIS_MAXMEMORY_ALLKEYS_RANDOM 4
+#define REDIS_MAXMEMORY_NO_EVICTION 5
 
 /* We can print the stacktrace, so our assert is defined this way: */
 #ifdef _WIN32
@@ -351,7 +353,7 @@ struct sharedObjectsStruct {
     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
     *colon, *nullbulk, *nullmultibulk, *queued,
     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
-    *outofrangeerr, *plus,
+    *outofrangeerr, *loadingerr, *plus,
     *select0, *select1, *select2, *select3, *select4,
     *select5, *select6, *select7, *select8, *select9,
     *messagebulk, *pmessagebulk, *subscribebulk, *unsubscribebulk, *mbulk3,
@@ -372,7 +374,13 @@ struct redisServer {
     long long dirty_before_bgsave; /* used to restore dirty on failed BGSAVE */
     list *clients;
     dict *commands;             /* Command table hahs table */
-    struct redisCommand *delCommand, *multiCommand; /* often lookedup cmds */
+    /* RDB / AOF loading information */
+    int loading;
+    off_t loading_total_bytes;
+    off_t loading_loaded_bytes;
+    time_t loading_start_time;
+    /* Fast pointers to often looked up command */
+    struct redisCommand *delCommand, *multiCommand;
     list *slaves, *monitors;
     char neterr[ANET_ERR_LEN];
     aeEventLoop *el;
@@ -413,15 +421,24 @@ struct redisServer {
     int activerehashing;
     /* Replication related */
     int isslave;
+    /* Slave specific fields */
     char *masterauth;
     char *masterhost;
     int masterport;
     redisClient *master;    /* client that is master for this slave */
-    int replstate;
+    int replstate;          /* replication status if the instance is a slave */
+    off_t repl_transfer_left;  /* bytes left reading .rdb  */
+    int repl_transfer_s;    /* slave -> master SYNC socket */
+    int repl_transfer_fd;   /* slave -> master SYNC temp file descriptor */
+    char *repl_transfer_tmpfile; /* slave-> master SYNC temp file name */
+    time_t repl_transfer_lastio; /* unix time of the latest read, for timeout */
+    int repl_serve_stale_data; /* Serve stale data when link is down? */
+    /* Limits */
     unsigned int maxclients;
     unsigned long long maxmemory;
     int maxmemory_policy;
     int maxmemory_samples;
+    /* Blocked clients */
     unsigned int blpop_blocked_clients;
     unsigned int vm_blocked_clients;
     /* Sort parameters - qsort_r() is only available under BSD so we
@@ -730,6 +747,12 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc);
 void replicationFeedMonitors(list *monitors, int dictid, robj **argv, int argc);
 int syncWithMaster(void);
 void updateSlavesWaitingBgsave(int bgsaveerr);
+void replicationCron(void);
+
+/* Generic persistence functions */
+void startLoading(FILE *fp);
+void loadingProgress(off_t pos);
+void stopLoading(void);
 
 /* RDB persistence */
 int rdbLoad(char *filename);

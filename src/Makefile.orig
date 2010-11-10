@@ -36,9 +36,15 @@ PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
 INSTALL= cp -p
 
+<<<<<<< HEAD
 OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o
 BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
-CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
+CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o
+=======
+OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o
+BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
+CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
+>>>>>>> upstream/master
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
 CHECKAOFOBJ = redis-check-aof.o
 
@@ -121,8 +127,16 @@ redis-server: $(OBJ)
 	@echo ""
 
 redis-benchmark: $(BENCHOBJ)
+<<<<<<< HEAD
+	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) $(LIBS)
+
+redis-cli: $(CLIOBJ)
 	cd ../deps/hiredis && make static
-	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(LIBS)
+	cd ../deps/linenoise && make
+	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(LIBS)
+=======
+	cd ../deps/hiredis && make static
+	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a
 
 redis-benchmark.o:
 	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
@@ -130,7 +144,8 @@ redis-benchmark.o:
 redis-cli: $(CLIOBJ)
 	cd ../deps/hiredis && make static ARCH="$(ARCH)"
 	cd ../deps/linenoise && make ARCH="$(ARCH)"
-	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(LIBS)
+	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
+>>>>>>> upstream/master
 
 redis-cli.o:
 	$(CC) -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) $<
@@ -145,9 +160,13 @@ redis-check-aof: $(CHECKAOFOBJ)
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
+<<<<<<< HEAD
 	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe
+=======
+	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
 	cd ../deps/hiredis && make clean
 	cd ../deps/linenoise && make clean
+>>>>>>> upstream/master
 
 dep:
 	$(CC) -MM *.c

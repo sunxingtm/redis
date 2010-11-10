@@ -16,4 +16,8 @@ linenoise_example: linenoise.o example.o
 	$(CC) $(ARCH) -c -Wall -W -Os -g $<
 
 clean:
-	rm -f linenoise_example *.o *.exe
+<<<<<<< HEAD
+	rm -f linenoise_example* *.o 
+=======
+	rm -f linenoise_example *.o
+>>>>>>> upstream/master

@@ -4,6 +4,7 @@
 #include <math.h>
 #include <sys/types.h>
 #include <sys/time.h>
+<<<<<<< HEAD
 
 #ifdef _WIN32
   #include <errno.h>
@@ -12,11 +13,13 @@
   #include <sys/resource.h>
   #include <sys/wait.h>
   #include <arpa/inet.h>
+#endif
+=======
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
-#endif
 #include <sys/stat.h>
+>>>>>>> upstream/master
 
 int rdbSaveType(FILE *fp, unsigned char type) {
     if (fwrite(&type,1,1,fp) == 0) return -1;

@@ -480,20 +480,43 @@ int syncWithMaster(void) {
 #endif
         return REDIS_ERR;
     }
+<<<<<<< HEAD
+    /* Read the bulk write count */
+    if (syncReadLine(fd,buf,1024,3600) == -1) {
+#ifdef _WIN32
+        closesocket(fd);
+#else
+        close(fd);
+#endif
+        redisLog(REDIS_WARNING,"I/O error reading bulk count from MASTER: %s",
+            strerror(errno));
+        return REDIS_ERR;
+    }
+    if (buf[0] == '-') {
+#ifdef _WIN32
+        closesocket(fd);
+#else
+        close(fd);
+#endif
+        redisLog(REDIS_WARNING,"MASTER aborted replication with an error: %s",
+            buf+1);
+        return REDIS_ERR;
+    } else if (buf[0] != '$') {
+#ifdef _WIN32
+        closesocket(fd);
+#else
+        close(fd);
+#endif
+        redisLog(REDIS_WARNING,"Bad protocol from MASTER, the first byte is not '$', are you sure the host and port are right?");
+        return REDIS_ERR;
+    }
+    dumpsize = strtol(buf+1,NULL,10);
+    redisLog(REDIS_NOTICE,"Receiving %ld bytes data dump from MASTER",dumpsize);
+    /* Read the bulk write data on a temp file */
+=======
 
     /* Prepare a suitable temp file for bulk transfer */
-#ifdef _WIN32
-        closesocket(fd);
-#else
-#endif
-#ifdef _WIN32
-        closesocket(fd);
-#else
-#endif
-#ifdef _WIN32
-        closesocket(fd);
-#else
-#endif
+>>>>>>> upstream/master
     while(maxtries--) {
         snprintf(tmpfile,256,
             "temp-%d.%ld.rdb",(int)time(NULL),(long int)getpid());
@@ -511,15 +534,67 @@ int syncWithMaster(void) {
         return REDIS_ERR;
     }
 
-    /* Setup the non blocking download of the bulk file. */
-    if (aeCreateFileEvent(server.el, fd, AE_READABLE, readSyncBulkPayload, NULL)
-            == AE_ERR)
-    {
+<<<<<<< HEAD
+#ifdef _WIN32
+        nread = recv(fd,buf,(dumpsize < 1024)?dumpsize:1024, 0);
+#else
+        nread = read(fd,buf,(dumpsize < 1024)?dumpsize:1024);
+#endif
+        if (nread <= 0) {
+            redisLog(REDIS_WARNING,"I/O error trying to sync with MASTER: %s",
+                (nread == -1) ? strerror(errno) : "connection lost");
+#ifdef _WIN32
+            closesocket(fd);
+#else
+            close(fd);
+#endif
+            close(dfd);
+            return REDIS_ERR;
+        }
+        nwritten = write(dfd,buf,nread);
+        if (nwritten == -1) {
+            redisLog(REDIS_WARNING,"Write error writing to the DB dump file needed for MASTER <-> SLAVE synchrnonization: %s", strerror(errno));
+#ifdef _WIN32
+            closesocket(fd);
+#else
+            close(fd);
+#endif
+            close(dfd);
+            return REDIS_ERR;
+        }
+        dumpsize -= nread;
+    }
+    close(dfd);
+    if (rename(tmpfile,server.dbfilename) == -1) {
+        redisLog(REDIS_WARNING,"Failed trying to rename the temp DB into dump.rdb in MASTER <-> SLAVE synchronization: %s", strerror(errno));
+        unlink(tmpfile);
 #ifdef _WIN32
         closesocket(fd);
 #else
         close(fd);
 #endif
+        return REDIS_ERR;
+    }
+    emptyDb();
+    if (rdbLoad(server.dbfilename) != REDIS_OK) {
+        redisLog(REDIS_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
+#ifdef _WIN32
+        closesocket(fd);
+#else
+        close(fd);
+#endif
+        return REDIS_ERR;
+    }
+    server.master = createClient(fd);
+    server.master->flags |= REDIS_MASTER;
+    server.master->authenticated = 1;
+    server.replstate = REDIS_REPL_CONNECTED;
+=======
+    /* Setup the non blocking download of the bulk file. */
+    if (aeCreateFileEvent(server.el, fd, AE_READABLE, readSyncBulkPayload, NULL)
+            == AE_ERR)
+    {
+        close(fd);
         redisLog(REDIS_WARNING,"Can't create readable event for SYNC");
         return REDIS_ERR;
     }
@@ -529,6 +604,7 @@ int syncWithMaster(void) {
     server.repl_transfer_fd = dfd;
     server.repl_transfer_lastio = time(NULL);
     server.repl_transfer_tmpfile = zstrdup(tmpfile);
+>>>>>>> upstream/master
     return REDIS_OK;
 }
 

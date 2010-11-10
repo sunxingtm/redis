@@ -122,10 +122,14 @@ static void freeClient(client c) {
     aeDeleteFileEvent(config.el,c->context->fd,AE_READABLE);
     redisFree(c->context);
     sdsfree(c->obuf);
+<<<<<<< HEAD
 #ifdef _WIN32
     closesocket(c->fd);  
 #else  
+    close(c->fd);
 #endif  
+=======
+>>>>>>> upstream/master
     zfree(c);
     config.liveclients--;
     ln = listSearchKey(config.clients,c);
@@ -189,11 +193,64 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
     REDIS_NOTUSED(mask);
+<<<<<<< HEAD
   
+#ifdef _WIN32
+    nread = recv(c->fd, buf, sizeof(buf),0);  
+#else  
+    nread = read(c->fd, buf, sizeof(buf));
+#endif  
+    if (nread == -1) {
+        fprintf(stderr, "Reading from socket: %s\n", strerror(errno));
+        freeClient(c);
+        return;
+    }
+    if (nread == 0) {
+        fprintf(stderr, "EOF from client\n");
+        freeClient(c);
+        return;
+    }
+    c->totreceived += nread;
+    c->ibuf = sdscatlen(c->ibuf,buf,nread);
+    len = sdslen(c->ibuf);
+
+    if (c->replytype == REPLY_INT ||
+        c->replytype == REPLY_RETCODE)
+    {
+        /* Check if the first line is complete. This is everything we need
+         * when waiting for an integer or status code reply.*/
+        if ((p = strstr(c->ibuf,"\r\n")) != NULL)
+            goto done;
+    } else if (c->replytype == REPLY_BULK) {
+        int advance = 0;
+        if (c->readlen < 0) {
+            advance = readLen(c->ibuf+pos,&c->readlen);
+            if (advance) {
+                pos += advance;
+                if (c->readlen == -1) {
+                    goto done;
+                } else {
+                    /* include the trailing \r\n */
+                    c->readlen += 2;
+                }
+            } else {
+                goto skip;
+            }
+        }
+
+        int canconsume;
+        if (c->readlen > 0) {
+            canconsume = c->readlen > (len-pos) ? (len-pos) : c->readlen;
+            c->readlen -= canconsume;
+            pos += canconsume;
+        }
+=======
+
     /* Calculate latency only for the first read event. This means that the
      * server already sent the reply and we need to parse it. Parsing overhead
      * is not part of the latency, so calculate it only once, here. */
     if (c->latency < 0) c->latency = ustime()-(c->start);
+>>>>>>> upstream/master
 
     if (redisBufferRead(c->context) != REDIS_OK) {
         fprintf(stderr,"Error: %s\n",c->context->errstr);
@@ -224,11 +281,16 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
+<<<<<<< HEAD
+        int len = sdslen(c->obuf) - c->written;
 #ifdef _WIN32      
-        int nwritten = send((c->context->fd,ptr,sdslen(c->obuf)-c->written);      
+        int nwritten = send(c->fd, ptr, len,0);      
 #else      
-        int nwritten = write(c->context->fd,ptr,sdslen(c->obuf)-c->written);
+        int nwritten = write(c->fd, ptr, len);
 #endif      
+=======
+        int nwritten = write(c->context->fd,ptr,sdslen(c->obuf)-c->written);
+>>>>>>> upstream/master
         if (nwritten == -1) {
             if (errno != EPIPE)
                 fprintf(stderr, "Writing to socket: %s\n", strerror(errno));
