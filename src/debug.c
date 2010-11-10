@@ -24,7 +24,7 @@ void xorDigest(unsigned char *digest, void *ptr, size_t len) {
     int j;
 
     SHA1Init(&ctx);
-    SHA1Update(&ctx,s,len);
+    SHA1Update(&ctx,s,(UINT32)len);
     SHA1Final(hash,&ctx);
 
     for (j = 0; j < 20; j++)
@@ -221,7 +221,7 @@ void debugCommand(redisClient *c) {
             addReplyStatusFormat(c,
                 "Value at:%p refcount:%d "
                 "encoding:%s serializedlength:%lld "
-                "lru     :%d lru_seconds_idle:%lu",
+                "lru:%d lru_seconds_idle:%lu",
                 (void*)val, val->refcount,
                 strenc, (long long) rdbSavedObjectLen(val,NULL),
                 val->lru, estimateObjectIdleTime(val));

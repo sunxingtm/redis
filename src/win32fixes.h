@@ -19,12 +19,16 @@
   #include <io.h>
   #include <signal.h>
   #include <sys/types.h>
-  #include <windows.h>
   #include <winsock2.h>  /* setsocketopt */
   #include <ws2tcpip.h>
+  #include <windows.h>
   #include <sys/time.h>
   #include <fcntl.h>    /* _O_BINARY */
   #include <limits.h>  /* INT_MAX */
+  #include <sys/types.h>
+  #ifdef _WIN64
+    #include <ntsecapi.h>
+  #endif
 
   //Misc
   #ifdef __STRICT_ANSI__
@@ -39,13 +43,20 @@
   #else
     #define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
     #define ftello(stream) ftello64(stream)
+    #ifdef _WIN64
+        #define MINGW_HAS_SECURE_API
+        #include <io.h>
+        #define ftruncate _chsize_s
+    #endif
   #endif
 
   #define inline __inline
 
   #define sleep(x) Sleep((x)*1000)
-  #define random() (long)(((int) (rand)() * (int) (rand)()) % INT_MAX)
-  #define rand() (int)(((int) (rand)() * (int) (rand)()) % INT_MAX)
+
+  #define random() (long)replace_random()
+  #define rand() replace_random()
+  int replace_random();
 
   // Redis calls usleep(1) to give thread some time
   // Sleep(0) should do the same on windows
@@ -130,10 +141,14 @@
   #define SA_ONESHOT      SA_RESETHAND
   #define SA_RESTORER     0x04000000
 
-  #ifndef _SIGSET_T_
-  #define _SIGSET_T_
-    typedef unsigned long sigset_t;
-  #endif /* _SIGSET_T_ */
+  #ifdef _WIN64
+    #define sigset_t _sigset_t
+  #else
+    #ifndef _SIGSET_T_
+    #define _SIGSET_T_
+        typedef unsigned long sigset_t;
+    #endif /* _SIGSET_T_ */
+ #endif
 
   #define sigemptyset(pset)    (*(pset) = 0)
   #define sigfillset(pset)     (*(pset) = (unsigned int)-1)
@@ -158,6 +173,7 @@ struct sigaction {
  int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 
   // Socekts
+  #ifndef _MSC_VER
   #define EMSGSIZE WSAEMSGSIZE
   #define EAFNOSUPPORT WSAEAFNOSUPPORT
   #define EWOULDBLOCK WSAEWOULDBLOCK
@@ -167,7 +183,9 @@ struct sigaction {
   #define EPROTONOSUPPORT WSAEPROTONOSUPPORT
   #define ECONNREFUSED WSAECONNREFUSED
   #define EBADFD WSAENOTSOCK
+  #define ETIMEDOUT WSAETIMEDOUT
   #define EOPNOTSUPP WSAEOPNOTSUPP
+  #endif
 
   #define setsockopt(a,b,c,d,e) replace_setsockopt(a,b,c,d,e)
 
@@ -179,8 +197,7 @@ struct sigaction {
 
   //threads avoiding pthread.h
   #define pthread_mutex_t CRITICAL_SECTION
-  #define pthread_attr_t int
-  #define ETIMEDOUT WSAETIMEDOUT
+  #define pthread_attr_t ssize_t
   #define PTHREAD_MUTEX_INITIALIZER (CRITICAL_SECTION) { 0 }
 
   #if !defined(STACK_SIZE_PARAM_IS_A_RESERVATION)
@@ -210,10 +227,11 @@ struct sigaction {
 
   pthread_t pthread_self(void);
 
-  static inline int pthread_exit(void *ret) {
-	 ExitThread((DWORD)ret);
-  }
-
+/*
+*   static inline int pthread_exit(void *ret) {
+*	 ExitThread((DWORD)ret);
+*  }
+*/
   int pthread_detach (pthread_t thread);
   int pthread_sigmask(int how, const sigset_t *set, sigset_t *oset);
 

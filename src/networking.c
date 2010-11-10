@@ -58,13 +58,11 @@ redisClient *createClient(int fd) {
     selectDb(c,0);
     c->fd = fd;
     c->querybuf = sdsempty();
-    c->newline = NULL;
+    c->reqtype = 0;
     c->argc = 0;
     c->argv = NULL;
+    c->multibulklen = 0;
     c->bulklen = -1;
-    c->multibulk = 0;
-    c->mbargc = 0;
-    c->mbargv = NULL;
     c->sentlen = 0;
     c->flags = 0;
     c->lastinteraction = time(NULL);
@@ -87,7 +85,12 @@ redisClient *createClient(int fd) {
     return c;
 }
 
+/* Set the event loop to listen for write events on the client's socket.
+ * Typically gets called every time a reply is built. */
 int _installWriteEvent(redisClient *c) {
+    /* When CLOSE_AFTER_REPLY is set, no more replies may be added! */
+    redisAssert(!(c->flags & REDIS_CLOSE_AFTER_REPLY));
+
     if (c->fd <= 0) return REDIS_ERR;
     if (c->bufpos == 0 && listLength(c->reply) == 0 &&
         (c->replstate == REDIS_REPL_NONE ||
@@ -124,7 +127,7 @@ int _addReplyToBuffer(redisClient *c, char *s, size_t len) {
     if (len > available) return REDIS_ERR;
 
     memcpy(c->buf+c->bufpos,s,len);
-    c->bufpos+=len;
+    c->bufpos+=(int)len;
     return REDIS_OK;
 }
 
@@ -334,7 +337,11 @@ void addReplyBulkLen(redisClient *c, robj *obj) {
     if (obj->encoding == REDIS_ENCODING_RAW) {
         len = sdslen(obj->ptr);
     } else {
+#ifdef _WIN64
+        long long n = (long long)obj->ptr;
+#else
         long n = (long)obj->ptr;
+#endif
 
         /* Compute how many bytes will take this integer as a radix 10 string */
         len = 1;
@@ -366,26 +373,14 @@ void addReplyBulkCString(redisClient *c, char *s) {
     }
 }
 
-void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
-    int cport, cfd;
-    char cip[128];
+static void acceptCommonHandler(int fd) {
     redisClient *c;
-    REDIS_NOTUSED(el);
-    REDIS_NOTUSED(mask);
-    REDIS_NOTUSED(privdata);
-
-    cfd = anetAccept(server.neterr, fd, cip, &cport);
-    if (cfd == AE_ERR) {
-        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
-        return;
-    }
-    redisLog(REDIS_VERBOSE,"Accepted %s:%d", cip, cport);
-    if ((c = createClient(cfd)) == NULL) {
+    if ((c = createClient(fd)) == NULL) {
         redisLog(REDIS_WARNING,"Error allocating resoures for the client");
 #ifdef _WIN32
-        closesocket(cfd);
+        closesocket(fd); /* May be already closed, just ingore errors */
 #else
-        close(cfd); /* May be already closed, just ingore errors */
+        close(fd); /* May be already closed, just ingore errors */
 #endif
         return;
     }
@@ -396,9 +391,9 @@ void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (server.maxclients && listLength(server.clients) > server.maxclients) {
         char *err = "-ERR max number of clients reached\r\n";
 
-       /* That's a best effort error message, don't check write errors */
+        /* That's a best effort error message, don't check write errors */
 #ifdef _WIN32
-        if (send(c->fd,err,strlen(err),0) == -1) {
+        if (send(c->fd,err,(int)strlen(err),0) == SOCKET_ERROR) {
         }
 #else
         if (write(c->fd,err,strlen(err)) == -1) {
@@ -412,15 +407,43 @@ void acceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     server.stat_numconnections++;
 }
 
+void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+    int cport, cfd;
+    char cip[128];
+    REDIS_NOTUSED(el);
+    REDIS_NOTUSED(mask);
+    REDIS_NOTUSED(privdata);
+
+    cfd = anetTcpAccept(server.neterr, fd, cip, &cport);
+    if (cfd == AE_ERR) {
+        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        return;
+    }
+    redisLog(REDIS_VERBOSE,"Accepted %s:%d", cip, cport);
+    acceptCommonHandler(cfd);
+}
+
+void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
+    int cfd;
+    REDIS_NOTUSED(el);
+    REDIS_NOTUSED(mask);
+    REDIS_NOTUSED(privdata);
+
+    cfd = anetUnixAccept(server.neterr, fd);
+    if (cfd == AE_ERR) {
+        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        return;
+    }
+    redisLog(REDIS_VERBOSE,"Accepted connection to %s", server.unixsocket);
+    acceptCommonHandler(cfd);
+}
+
+
 static void freeClientArgv(redisClient *c) {
     int j;
-
     for (j = 0; j < c->argc; j++)
         decrRefCount(c->argv[j]);
-    for (j = 0; j < c->mbargc; j++)
-        decrRefCount(c->mbargv[j]);
     c->argc = 0;
-    c->mbargc = 0;
 }
 
 void freeClient(redisClient *c) {
@@ -506,7 +529,6 @@ void freeClient(redisClient *c) {
     }
     /* Release memory */
     zfree(c->argv);
-    zfree(c->mbargv);
     freeClientMultiState(c);
     zfree(c);
 }
@@ -556,7 +578,7 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
             }
         } else {
             o = listNodeValue(listFirst(c->reply));
-            objlen = sdslen(o->ptr);
+            objlen = (int)sdslen(o->ptr);
 
             if (objlen == 0) {
                 listDelNode(c->reply,listFirst(c->reply));
@@ -608,6 +630,9 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (listLength(c->reply) == 0) {
         c->sentlen = 0;
         aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+
+        /* Close connection after entire reply has been sent. */
+        if (c->flags & REDIS_CLOSE_AFTER_REPLY) freeClient(c);
     }
 }
 
@@ -630,7 +655,7 @@ void sendReplyToClientWritev(aeEventLoop *el, int fd, void *privdata, int mask)
         /* fill-in the iov[] array */
         for(node = listFirst(c->reply); node; node = listNextNode(node)) {
             o = listNodeValue(node);
-            objlen = sdslen(o->ptr);
+            objlen = (int)sdslen(o->ptr);
 
             if (totwritten + objlen - offset > REDIS_MAX_WRITE_PER_EVENT)
                 break;
@@ -665,7 +690,7 @@ void sendReplyToClientWritev(aeEventLoop *el, int fd, void *privdata, int mask)
         /* remove written robjs from c->reply */
         while (nwritten && listLength(c->reply)) {
             o = listNodeValue(listFirst(c->reply));
-            objlen = sdslen(o->ptr);
+            objlen = (int)sdslen(o->ptr);
 
             if(nwritten >= objlen - offset) {
                 listDelNode(c->reply, listFirst(c->reply));
@@ -692,9 +717,9 @@ void sendReplyToClientWritev(aeEventLoop *el, int fd, void *privdata, int mask)
 /* resetClient prepare the client to process the next command */
 void resetClient(redisClient *c) {
     freeClientArgv(c);
+    c->reqtype = 0;
+    c->multibulklen = 0;
     c->bulklen = -1;
-    c->multibulk = 0;
-    c->newline = NULL;
 }
 
 void closeTimedoutClients(void) {
@@ -725,90 +750,172 @@ void closeTimedoutClients(void) {
     }
 }
 
-void processInputBuffer(redisClient *c) {
-    int seeknewline = 0;
+int processInlineBuffer(redisClient *c) {
+    char *newline = strstr(c->querybuf,"\r\n");
+    int argc, j;
+    sds *argv;
+    size_t querylen;
 
-again:
-    /* Before to process the input buffer, make sure the client is not
-     * waitig for a blocking operation such as BLPOP. Note that the first
-     * iteration the client is never blocked, otherwise the processInputBuffer
-     * would not be called at all, but after the execution of the first commands
-     * in the input buffer the client may be blocked, and the "goto again"
-     * will try to reiterate. The following line will make it return asap. */
-    if (c->flags & REDIS_BLOCKED || c->flags & REDIS_IO_WAIT) return;
+    /* Nothing to do without a \r\n */
+    if (newline == NULL)
+        return REDIS_ERR;
 
-    if (seeknewline && c->bulklen == -1) c->newline = strchr(c->querybuf,'\n');
-    seeknewline = 1;
-    if (c->bulklen == -1) {
-        /* Read the first line of the query */
-        size_t querylen;
+    /* Split the input buffer up to the \r\n */
+    querylen = newline-(c->querybuf);
+    argv = sdssplitlen(c->querybuf,querylen," ",1,&argc);
 
-        if (c->newline) {
-            char *p = c->newline;
-            sds query, *argv;
-            int argc, j;
+    /* Leave data after the first line of the query in the buffer */
+    c->querybuf = sdsrange(c->querybuf,querylen+2,-1);
 
-            c->newline = NULL;
-            query = c->querybuf;
-            c->querybuf = sdsempty();
-            querylen = 1+(p-(query));
-            if (sdslen(query) > querylen) {
-                /* leave data after the first line of the query in the buffer */
-                c->querybuf = sdscatlen(c->querybuf,query+querylen,sdslen(query)-querylen);
-            }
-            *p = '\0'; /* remove "\n" */
-            if (*(p-1) == '\r') *(p-1) = '\0'; /* and "\r" if any */
-            sdsupdatelen(query);
+    /* Setup argv array on client structure */
+    if (c->argv) zfree(c->argv);
+    c->argv = zmalloc(sizeof(robj*)*argc);
 
-            /* Now we can split the query in arguments */
-            argv = sdssplitlen(query,sdslen(query)," ",1,&argc);
-            sdsfree(query);
-
-            if (c->argv) zfree(c->argv);
-            c->argv = zmalloc(sizeof(robj*)*argc);
-
-            for (j = 0; j < argc; j++) {
-                if (sdslen(argv[j])) {
-                    c->argv[c->argc] = createObject(REDIS_STRING,argv[j]);
-                    c->argc++;
-                } else {
-                    sdsfree(argv[j]);
-                }
-            }
-            zfree(argv);
-            if (c->argc) {
-                /* Execute the command. If the client is still valid
-                 * after processCommand() return and there is something
-                 * on the query buffer try to process the next command. */
-                if (processCommand(c) && sdslen(c->querybuf)) goto again;
-            } else {
-                /* Nothing to process, argc == 0. Just process the query
-                 * buffer if it's not empty or return to the caller */
-                if (sdslen(c->querybuf)) goto again;
-            }
-            return;
-        } else if (sdslen(c->querybuf) >= REDIS_REQUEST_MAX_SIZE) {
-            redisLog(REDIS_VERBOSE, "Client protocol error");
-            freeClient(c);
-            return;
-        }
-    } else {
-        /* Bulk read handling. Note that if we are at this point
-           the client already sent a command terminated with a newline,
-           we are reading the bulk data that is actually the last
-           argument of the command. */
-        int qbl = sdslen(c->querybuf);
-
-        if (c->bulklen <= qbl) {
-            /* Copy everything but the final CRLF as final argument */
-            c->argv[c->argc] = createStringObject(c->querybuf,c->bulklen-2);
+    /* Create redis objects for all arguments. */
+    for (c->argc = 0, j = 0; j < argc; j++) {
+        if (sdslen(argv[j])) {
+            c->argv[c->argc] = createObject(REDIS_STRING,argv[j]);
             c->argc++;
-            c->querybuf = sdsrange(c->querybuf,c->bulklen,-1);
-            /* Process the command. If the client is still valid after
-             * the processing and there is more data in the buffer
-             * try to parse it. */
-            if (processCommand(c) && sdslen(c->querybuf)) goto again;
-            return;
+        } else {
+            sdsfree(argv[j]);
+        }
+    }
+    zfree(argv);
+    return REDIS_OK;
+}
+
+/* Helper function. Trims query buffer to make the function that processes
+ * multi bulk requests idempotent. */
+static void setProtocolError(redisClient *c, int pos) {
+    c->flags |= REDIS_CLOSE_AFTER_REPLY;
+    c->querybuf = sdsrange(c->querybuf,pos,-1);
+}
+
+int processMultibulkBuffer(redisClient *c) {
+    char *newline = NULL;
+    char *eptr;
+    int pos = 0, tolerr;
+    long bulklen;
+
+    if (c->multibulklen == 0) {
+        /* The client should have been reset */
+        redisAssert(c->argc == 0);
+
+        /* Multi bulk length cannot be read without a \r\n */
+        newline = strstr(c->querybuf,"\r\n");
+        if (newline == NULL)
+            return REDIS_ERR;
+
+        /* We know for sure there is a whole line since newline != NULL,
+         * so go ahead and find out the multi bulk length. */
+        redisAssert(c->querybuf[0] == '*');
+        c->multibulklen = strtol(c->querybuf+1,&eptr,10);
+        pos = (newline-c->querybuf)+2;
+        if (c->multibulklen <= 0) {
+            c->querybuf = sdsrange(c->querybuf,pos,-1);
+            return REDIS_OK;
+        } else if (c->multibulklen > 1024*1024) {
+            addReplyError(c,"Protocol error: invalid multibulk length");
+            setProtocolError(c,pos);
+            return REDIS_ERR;
+        }
+
+        /* Setup argv array on client structure */
+        if (c->argv) zfree(c->argv);
+        c->argv = zmalloc(sizeof(robj*)*c->multibulklen);
+
+        /* Search new newline */
+        newline = strstr(c->querybuf+pos,"\r\n");
+    }
+
+    redisAssert(c->multibulklen > 0);
+    while(c->multibulklen) {
+        /* Read bulk length if unknown */
+        if (c->bulklen == -1) {
+            newline = strstr(c->querybuf+pos,"\r\n");
+            if (newline != NULL) {
+                if (c->querybuf[pos] != '$') {
+                    addReplyErrorFormat(c,
+                        "Protocol error: expected '$', got '%c'",
+                        c->querybuf[pos]);
+                    setProtocolError(c,pos);
+                    return REDIS_ERR;
+                }
+
+                bulklen = strtol(c->querybuf+pos+1,&eptr,10);
+                tolerr = (eptr[0] != '\r');
+                if (tolerr || bulklen == LONG_MIN || bulklen == LONG_MAX ||
+                    bulklen < 0 || bulklen > 1024*1024*1024)
+                {
+                    addReplyError(c,"Protocol error: invalid bulk length");
+                    setProtocolError(c,pos);
+                    return REDIS_ERR;
+                }
+                pos += eptr-(c->querybuf+pos)+2;
+                c->bulklen = bulklen;
+            } else {
+                /* No newline in current buffer, so wait for more data */
+                break;
+            }
+        }
+
+        /* Read bulk argument */
+        if (sdslen(c->querybuf)-pos < (unsigned)(c->bulklen+2)) {
+            /* Not enough data (+2 == trailing \r\n) */
+            break;
+        } else {
+            c->argv[c->argc++] = createStringObject(c->querybuf+pos,c->bulklen);
+            pos += c->bulklen+2;
+            c->bulklen = -1;
+            c->multibulklen--;
+        }
+    }
+
+    /* Trim to pos */
+    c->querybuf = sdsrange(c->querybuf,pos,-1);
+
+    /* We're done when c->multibulk == 0 */
+    if (c->multibulklen == 0) {
+        return REDIS_OK;
+    }
+    return REDIS_ERR;
+}
+
+void processInputBuffer(redisClient *c) {
+    /* Keep processing while there is something in the input buffer */
+    while(sdslen(c->querybuf)) {
+        /* Immediately abort if the client is in the middle of something. */
+        if (c->flags & REDIS_BLOCKED || c->flags & REDIS_IO_WAIT) return;
+
+        /* REDIS_CLOSE_AFTER_REPLY closes the connection once the reply is
+         * written to the client. Make sure to not let the reply grow after
+         * this flag has been set (i.e. don't process more commands). */
+        if (c->flags & REDIS_CLOSE_AFTER_REPLY) return;
+
+        /* Determine request type when unknown. */
+        if (!c->reqtype) {
+            if (c->querybuf[0] == '*') {
+                c->reqtype = REDIS_REQ_MULTIBULK;
+            } else {
+                c->reqtype = REDIS_REQ_INLINE;
+            }
+        }
+
+        if (c->reqtype == REDIS_REQ_INLINE) {
+            if (processInlineBuffer(c) != REDIS_OK) break;
+        } else if (c->reqtype == REDIS_REQ_MULTIBULK) {
+            if (processMultibulkBuffer(c) != REDIS_OK) break;
+        } else {
+            redisPanic("Unknown request type");
+        }
+
+        /* Multibulk processing could see a <= 0 length. */
+        if (c->argc == 0) {
+            resetClient(c);
+        } else {
+            /* Only reset the client when the command was executed. */
+            if (processCommand(c) == REDIS_OK)
+                resetClient(c);
         }
     }
 }
@@ -852,14 +959,8 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
     if (nread) {
-        size_t oldlen = sdslen(c->querybuf);
-        c->querybuf = sdscatlen(c->querybuf, buf, nread);
+        c->querybuf = sdscatlen(c->querybuf,buf,nread);
         c->lastinteraction = time(NULL);
-        /* Scan this new piece of the query for the newline. We do this
-         * here in order to make sure we perform this scan just one time
-         * per piece of buffer, leading to an O(N) scan instead of O(N*N) */
-        if (c->bulklen == -1 && c->newline == NULL)
-            c->newline = strchr(c->querybuf+oldlen,'\n');
     } else {
         return;
     }

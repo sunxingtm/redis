@@ -127,7 +127,7 @@ int stringmatchlen(const char *pattern, int patternLen,
 }
 
 int stringmatch(const char *pattern, const char *string, int nocase) {
-    return stringmatchlen(pattern,strlen(pattern),string,strlen(string),nocase);
+    return stringmatchlen(pattern,(int)strlen(pattern),string,(int)strlen(string),nocase);
 }
 
 /* Convert a string representing an amount of memory into the number of
@@ -166,7 +166,7 @@ long long memtoll(const char *p, int *err) {
         if (err) *err = 1;
         mul = 1;
     }
-    digits = u-p;
+    digits = (unsigned int)(u-p);
     if (digits >= sizeof(buf)) {
         if (err) *err = 1;
         return LLONG_MAX;
@@ -198,7 +198,7 @@ int ll2string(char *s, size_t len, long long value) {
     if (l+1 > len) l = len-1; /* Make sure it fits, including the nul term */
     memcpy(s,p,l);
     s[l] = '\0';
-    return l;
+    return (int)l;
 }
 
 /* Check if the sds string 's' can be represented by a long long
@@ -236,7 +236,11 @@ int isStringRepresentableAsLong(sds s, long *longval) {
 int isObjectRepresentableAsLongLong(robj *o, long long *llongval) {
     redisAssert(o->type == REDIS_STRING);
     if (o->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        if (llongval) *llongval = (long long) o->ptr;
+#else
         if (llongval) *llongval = (long) o->ptr;
+#endif
         return REDIS_OK;
     } else {
         return isStringRepresentableAsLongLong(o->ptr,llongval);

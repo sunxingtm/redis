@@ -76,6 +76,7 @@ static struct config {
     aeEventLoop *el;
     char *hostip;
     int hostport;
+    char *hostsocket;
     int keepalive;
     long long start;
     long long totlatency;
@@ -376,7 +377,11 @@ static client createClient(void) {
     client c = zmalloc(sizeof(struct _client));
     char err[ANET_ERR_LEN];
 
-    c->fd = anetTcpNonBlockConnect(err,config.hostip,config.hostport);
+    if (config.hostsocket == NULL)
+        c->fd = anetTcpNonBlockConnect(err,config.hostip,config.hostport);
+    else
+        c->fd = anetUnixNonBlockConnect(err,config.hostsocket);
+
     if (c->fd == ANET_ERR) {
         zfree(c);
         fprintf(stderr,"Connect: %s\n",err);
@@ -472,6 +477,9 @@ void parseOptions(int argc, char **argv) {
         } else if (!strcmp(argv[i],"-p") && !lastarg) {
             config.hostport = atoi(argv[i+1]);
             i++;
+        } else if (!strcmp(argv[i],"-s") && !lastarg) {
+            config.hostsocket = argv[i+1];
+            i++;
         } else if (!strcmp(argv[i],"-d") && !lastarg) {
             config.datasize = atoi(argv[i+1]);
             i++;
@@ -495,7 +503,8 @@ void parseOptions(int argc, char **argv) {
             printf("Wrong option '%s' or option argument missing\n\n",argv[i]);
             printf("Usage: redis-benchmark [-h <host>] [-p <port>] [-c <clients>] [-n <requests]> [-k <boolean>]\n\n");
             printf(" -h <hostname>      Server hostname (default 127.0.0.1)\n");
-            printf(" -p <hostname>      Server port (default 6379)\n");
+            printf(" -p <port>          Server port (default 6379)\n");
+            printf(" -s <socket>        Server socket (overrides host and port)\n");
             printf(" -c <clients>       Number of parallel connections (default 50)\n");
             printf(" -n <requests>      Total number of requests (default 10000)\n");
             printf(" -d <size>          Data size of SET/GET value in bytes (default 2)\n");
@@ -558,6 +567,7 @@ int main(int argc, char **argv) {
 
     config.hostip = "127.0.0.1";
     config.hostport = 6379;
+    config.hostsocket = NULL;
 
     parseOptions(argc,argv);
 
@@ -596,10 +606,28 @@ int main(int argc, char **argv) {
         aeMain(config.el);
         endBenchmark();
 
+        prepareForBenchmark("MSET (10 keys, multi bulk)");
+        c = createClient();
+        if (!c) exit(1);
+        c->obuf = sdscatprintf(c->obuf,"*%d\r\n$4\r\nMSET\r\n", 11);
+        {
+            int i;
+            char *data = zmalloc(config.datasize+2);
+            memset(data,'x',config.datasize);
+            for (i = 0; i < 10; i++) {
+                c->obuf = sdscatprintf(c->obuf,"$%d\r\n%s\r\n",config.datasize,data);
+            }
+            zfree(data);
+        }
+        prepareClientForReply(c,REPLY_RETCODE);
+        createMissingClients(c);
+        aeMain(config.el);
+        endBenchmark();
+
         prepareForBenchmark("SET");
         c = createClient();
         if (!c) exit(1);
-        c->obuf = sdscatprintf(c->obuf,"SET foo_rand000000000000 %d\r\n",config.datasize);
+        c->obuf = sdscat(c->obuf,"SET foo_rand000000000000 ");
         {
             char *data = zmalloc(config.datasize+2);
             memset(data,'x',config.datasize);
@@ -633,7 +661,7 @@ int main(int argc, char **argv) {
         prepareForBenchmark("LPUSH");
         c = createClient();
         if (!c) exit(1);
-        c->obuf = sdscat(c->obuf,"LPUSH mylist 3\r\nbar\r\n");
+        c->obuf = sdscat(c->obuf,"LPUSH mylist bar\r\n");
         prepareClientForReply(c,REPLY_INT);
         createMissingClients(c);
         aeMain(config.el);
@@ -651,7 +679,7 @@ int main(int argc, char **argv) {
         prepareForBenchmark("SADD");
         c = createClient();
         if (!c) exit(1);
-        c->obuf = sdscat(c->obuf,"SADD myset 24\r\ncounter_rand000000000000\r\n");
+        c->obuf = sdscat(c->obuf,"SADD myset counter_rand000000000000\r\n");
         prepareClientForReply(c,REPLY_RETCODE);
         createMissingClients(c);
         aeMain(config.el);
@@ -669,7 +697,7 @@ int main(int argc, char **argv) {
         prepareForBenchmark("LPUSH (again, in order to bench LRANGE)");
         c = createClient();
         if (!c) exit(1);
-        c->obuf = sdscat(c->obuf,"LPUSH mylist 3\r\nbar\r\n");
+        c->obuf = sdscat(c->obuf,"LPUSH mylist bar\r\n");
         prepareClientForReply(c,REPLY_RETCODE);
         createMissingClients(c);
         aeMain(config.el);

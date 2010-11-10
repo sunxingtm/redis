@@ -274,9 +274,6 @@ int loadAppendOnlyFile(char *filename) {
             redisLog(REDIS_WARNING,"Unknown command '%s' reading the append only file", argv[0]->ptr);
             exit(1);
         }
-        /* Try object encoding */
-        if (cmd->flags & REDIS_CMD_BULK)
-            argv[argc-1] = tryObjectEncoding(argv[argc-1]);
         /* Run the command in the context of a fake client */
         fakeClient->argc = argc;
         fakeClient->argv = argv;
@@ -320,55 +317,6 @@ readerr:
 fmterr:
     redisLog(REDIS_WARNING,"Bad file format reading the append only file: make a backup of your AOF file, then use ./redis-check-aof --fix <filename>");
     exit(1);
-}
-
-/* Write binary-safe string into a file in the bulkformat
- * $<count>\r\n<payload>\r\n */
-int fwriteBulkString(FILE *fp, char *s, unsigned long len) {
-    char cbuf[128];
-    int clen;
-    cbuf[0] = '$';
-    clen = 1+ll2string(cbuf+1,sizeof(cbuf)-1,len);
-    cbuf[clen++] = '\r';
-    cbuf[clen++] = '\n';
-    if (fwrite(cbuf,clen,1,fp) == 0) return 0;
-    if (len > 0 && fwrite(s,len,1,fp) == 0) return 0;
-    if (fwrite("\r\n",2,1,fp) == 0) return 0;
-    return 1;
-}
-
-/* Write a double value in bulk format $<count>\r\n<payload>\r\n */
-int fwriteBulkDouble(FILE *fp, double d) {
-    char buf[128], dbuf[128];
-
-    snprintf(dbuf,sizeof(dbuf),"%.17g\r\n",d);
-    snprintf(buf,sizeof(buf),"$%lu\r\n",(unsigned long)strlen(dbuf)-2);
-    if (fwrite(buf,strlen(buf),1,fp) == 0) return 0;
-    if (fwrite(dbuf,strlen(dbuf),1,fp) == 0) return 0;
-    return 1;
-}
-
-/* Write a long value in bulk format $<count>\r\n<payload>\r\n */
-int fwriteBulkLongLong(FILE *fp, long long l) {
-    char bbuf[128], lbuf[128];
-    unsigned int blen, llen;
-    llen = ll2string(lbuf,32,l);
-    blen = snprintf(bbuf,sizeof(bbuf),"$%u\r\n%s\r\n",llen,lbuf);
-    if (fwrite(bbuf,blen,1,fp) == 0) return 0;
-    return 1;
-}
-
-/* Delegate writing an object to writing a bulk string or bulk long long. */
-int fwriteBulkObject(FILE *fp, robj *obj) {
-    /* Avoid using getDecodedObject to help copy-on-write (we are often
-     * in a child process when this function is called). */
-    if (obj->encoding == REDIS_ENCODING_INT) {
-        return fwriteBulkLongLong(fp,(long)obj->ptr);
-    } else if (obj->encoding == REDIS_ENCODING_RAW) {
-        return fwriteBulkString(fp,obj->ptr,sdslen(obj->ptr));
-    } else {
-        redisPanic("Unknown string encoding");
-    }
 }
 
 /* Write a sequence of commands able to fully rebuild the dataset into
@@ -609,7 +557,8 @@ int rewriteAppendOnlyFileBackground(void) {
         char tmpfile[256];
 
         if (server.vm_enabled) vmReopenSwapFile();
-        close(server.fd);
+        if (server.ipfd > 0) close(server.ipfd);
+        if (server.sofd > 0) close(server.sofd);
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
         if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
             _exit(0);

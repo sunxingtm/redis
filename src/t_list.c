@@ -25,7 +25,7 @@ void listTypePush(robj *subject, robj *value, int where) {
     if (subject->encoding == REDIS_ENCODING_ZIPLIST) {
         int pos = (where == REDIS_HEAD) ? ZIPLIST_HEAD : ZIPLIST_TAIL;
         value = getDecodedObject(value);
-        subject->ptr = ziplistPush(subject->ptr,value->ptr,sdslen(value->ptr),pos);
+        subject->ptr = ziplistPush(subject->ptr,value->ptr,(unsigned int)sdslen(value->ptr),pos);
         decrRefCount(value);
     } else if (subject->encoding == REDIS_ENCODING_LINKEDLIST) {
         if (where == REDIS_HEAD) {
@@ -175,12 +175,12 @@ void listTypeInsert(listTypeEntry *entry, robj *value, int where) {
             /* When we insert after the current element, but the current element
              * is the tail of the list, we need to do a push. */
             if (next == NULL) {
-                subject->ptr = ziplistPush(subject->ptr,value->ptr,sdslen(value->ptr),REDIS_TAIL);
+                subject->ptr = ziplistPush(subject->ptr,value->ptr,(unsigned int)sdslen(value->ptr),REDIS_TAIL);
             } else {
-                subject->ptr = ziplistInsert(subject->ptr,next,value->ptr,sdslen(value->ptr));
+                subject->ptr = ziplistInsert(subject->ptr,next,value->ptr,(unsigned int)sdslen(value->ptr));
             }
         } else {
-            subject->ptr = ziplistInsert(subject->ptr,entry->zi,value->ptr,sdslen(value->ptr));
+            subject->ptr = ziplistInsert(subject->ptr,entry->zi,value->ptr,(unsigned int)sdslen(value->ptr));
         }
         decrRefCount(value);
     } else if (entry->li->encoding == REDIS_ENCODING_LINKEDLIST) {
@@ -200,7 +200,7 @@ int listTypeEqual(listTypeEntry *entry, robj *o) {
     listTypeIterator *li = entry->li;
     if (li->encoding == REDIS_ENCODING_ZIPLIST) {
         redisAssert(o->encoding == REDIS_ENCODING_RAW);
-        return ziplistCompare(entry->zi,o->ptr,sdslen(o->ptr));
+        return ziplistCompare(entry->zi,o->ptr,(unsigned int)sdslen(o->ptr));
     } else if (li->encoding == REDIS_ENCODING_LINKEDLIST) {
         return equalStringObjects(o,listNodeValue(entry->ln));
     } else {
@@ -261,6 +261,7 @@ void listTypeConvert(robj *subject, int enc) {
 
 void pushGenericCommand(redisClient *c, int where) {
     robj *lobj = lookupKeyWrite(c->db,c->argv[1]);
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
     if (lobj == NULL) {
         if (handleClientsWaitingListPush(c,c->argv[1],c->argv[2])) {
             addReply(c,shared.cone);
@@ -347,14 +348,17 @@ void pushxGenericCommand(redisClient *c, robj *refval, robj *val, int where) {
 }
 
 void lpushxCommand(redisClient *c) {
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
     pushxGenericCommand(c,NULL,c->argv[2],REDIS_HEAD);
 }
 
 void rpushxCommand(redisClient *c) {
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
     pushxGenericCommand(c,NULL,c->argv[2],REDIS_TAIL);
 }
 
 void linsertCommand(redisClient *c) {
+    c->argv[4] = tryObjectEncoding(c->argv[4]);
     if (strcasecmp(c->argv[2]->ptr,"after") == 0) {
         pushxGenericCommand(c,c->argv[3],c->argv[4],REDIS_TAIL);
     } else if (strcasecmp(c->argv[2]->ptr,"before") == 0) {
@@ -410,7 +414,7 @@ void lsetCommand(redisClient *c) {
     robj *o = lookupKeyWriteOrReply(c,c->argv[1],shared.nokeyerr);
     if (o == NULL || checkType(c,o,REDIS_LIST)) return;
     int index = atoi(c->argv[2]->ptr);
-    robj *value = c->argv[3];
+    robj *value = (c->argv[3] = tryObjectEncoding(c->argv[3]));
 
     listTypeTryConversion(o,value);
     if (o->encoding == REDIS_ENCODING_ZIPLIST) {
@@ -421,7 +425,7 @@ void lsetCommand(redisClient *c) {
         } else {
             o->ptr = ziplistDelete(o->ptr,&p);
             value = getDecodedObject(value);
-            o->ptr = ziplistInsert(o->ptr,p,value->ptr,sdslen(value->ptr));
+            o->ptr = ziplistInsert(o->ptr,p,value->ptr,(unsigned int)sdslen(value->ptr));
             decrRefCount(value);
             addReply(c,shared.ok);
             touchWatchedKey(c->db,c->argv[1]);
@@ -560,7 +564,8 @@ void ltrimCommand(redisClient *c) {
 }
 
 void lremCommand(redisClient *c) {
-    robj *subject, *obj = c->argv[3];
+    robj *subject, *obj;
+    obj = c->argv[3] = tryObjectEncoding(c->argv[3]);
     int toremove = atoi(c->argv[2]->ptr);
     int removed = 0;
     listTypeEntry entry;

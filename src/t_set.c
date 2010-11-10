@@ -178,6 +178,7 @@ void saddCommand(redisClient *c) {
     robj *set;
 
     set = lookupKeyWrite(c->db,c->argv[1]);
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
     if (set == NULL) {
         set = setTypeCreate(c->argv[2]);
         dbAdd(c->db,c->argv[1],set);
@@ -202,6 +203,7 @@ void sremCommand(redisClient *c) {
     if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,set,REDIS_SET)) return;
 
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
     if (setTypeRemove(set,c->argv[2])) {
         if (setTypeSize(set) == 0) dbDelete(c->db,c->argv[1]);
         touchWatchedKey(c->db,c->argv[1]);
@@ -216,7 +218,7 @@ void smoveCommand(redisClient *c) {
     robj *srcset, *dstset, *ele;
     srcset = lookupKeyWrite(c->db,c->argv[1]);
     dstset = lookupKeyWrite(c->db,c->argv[2]);
-    ele = c->argv[3];
+    ele = c->argv[3] = tryObjectEncoding(c->argv[3]);
 
     /* If the source key does not exist return 0 */
     if (srcset == NULL) {
@@ -264,6 +266,7 @@ void sismemberCommand(redisClient *c) {
     if ((set = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,set,REDIS_SET)) return;
 
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
     if (setTypeIsMember(set,c->argv[2]))
         addReply(c,shared.cone);
     else
@@ -314,7 +317,7 @@ void srandmemberCommand(redisClient *c) {
 }
 
 int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
-    return setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2);
+    return (int)(setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2));
 }
 
 void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, robj *dstkey) {

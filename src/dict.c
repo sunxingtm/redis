@@ -42,6 +42,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <ctype.h>
 
 #include "dict.h"
 #include "zmalloc.h"
@@ -92,6 +93,15 @@ unsigned int dictGenHashFunction(const unsigned char *buf, int len) {
 
     while (len--)
         hash = ((hash << 5) + hash) + (*buf++); /* hash * 33 + c */
+    return hash;
+}
+
+/* And a case insensitive version */
+unsigned int dictGenCaseHashFunction(const unsigned char *buf, int len) {
+    unsigned int hash = 5381;
+
+    while (len--)
+        hash = ((hash << 5) + hash) + (tolower(*buf++)); /* hash * 33 + c */
     return hash;
 }
 
@@ -216,10 +226,14 @@ int dictRehash(dict *d, int n) {
 }
 
 long long timeInMilliseconds(void) {
+#ifdef _WIN32
+    return GetTickCount();
+#else
     struct timeval tv;
 
     gettimeofday(&tv,NULL);
     return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
+#endif
 }
 
 /* Rehash for an amount of time between ms milliseconds and ms+1 milliseconds */

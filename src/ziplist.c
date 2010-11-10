@@ -133,6 +133,7 @@ static unsigned int zipIntSize(unsigned char encoding) {
     case ZIP_INT_64B: return sizeof(int64_t);
     }
     assert(NULL);
+    return 0; // makes compiler happy
 }
 
 /* Decode the encoded length pointed by 'p'. If a pointer to 'lensize' is
@@ -287,10 +288,10 @@ static void zipSaveInteger(unsigned char *p, int64_t value, unsigned char encodi
     int32_t i32;
     int64_t i64;
     if (encoding == ZIP_INT_16B) {
-        i16 = value;
+        i16 = (int16_t) value;
         memcpy(p,&i16,sizeof(i16));
     } else if (encoding == ZIP_INT_32B) {
-        i32 = value;
+        i32 = (int32_t) value;
         memcpy(p,&i32,sizeof(i32));
     } else if (encoding == ZIP_INT_64B) {
         i64 = value;
@@ -316,6 +317,7 @@ static int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
         ret = i64;
     } else {
         assert(NULL);
+        ret = 0; //makes compiler happy
     }
     return ret;
 }
@@ -397,7 +399,7 @@ static unsigned char *__ziplistCascadeUpdate(unsigned char *zl, unsigned char *p
         if (next.prevrawlensize < rawlensize) {
             /* The "prevlen" field of "next" needs more bytes to hold
              * the raw length of "cur". */
-            offset = p-zl;
+            offset = (unsigned int)(p-zl);
             extra = rawlensize-next.prevrawlensize;
             zl = ziplistResize(zl,curlen+extra);
             ZIPLIST_TAIL_OFFSET(zl) += extra;
@@ -405,7 +407,7 @@ static unsigned char *__ziplistCascadeUpdate(unsigned char *zl, unsigned char *p
 
             /* Move the tail to the back. */
             np = p+rawlen;
-            noffset = np-zl;
+            noffset = (unsigned int)(np-zl);
             memmove(np+rawlensize,
                 np+next.prevrawlensize,
                 curlen-noffset-next.prevrawlensize-1);
@@ -442,7 +444,7 @@ static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsig
         deleted++;
     }
 
-    totlen = p-first.p;
+    totlen = (unsigned int)(p-first.p);
     if (totlen > 0) {
         if (p[0] != ZIP_END) {
             /* Tricky: storing the prevlen in this entry might reduce or
@@ -466,11 +468,11 @@ static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsig
             memmove(first.p,p-nextdiff,ZIPLIST_BYTES(zl)-(p-zl)-1+nextdiff);
         } else {
             /* The entire tail was deleted. No need to move memory. */
-            ZIPLIST_TAIL_OFFSET(zl) = (first.p-zl)-first.prevrawlen;
+            ZIPLIST_TAIL_OFFSET(zl) = (UINT32)((first.p-zl)-first.prevrawlen);
         }
 
         /* Resize and update length */
-        offset = first.p-zl;
+        offset = (int)(first.p-zl);
         zl = ziplistResize(zl, ZIPLIST_BYTES(zl)-totlen+nextdiff);
         ZIPLIST_INCR_LENGTH(zl,-deleted);
         p = zl+offset;
@@ -522,7 +524,7 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
     nextdiff = (p[0] != ZIP_END) ? zipPrevLenByteDiff(p,reqlen) : 0;
 
     /* Store offset because a realloc may change the address of zl. */
-    offset = p-zl;
+    offset = (unsigned int)(p-zl);
     zl = ziplistResize(zl,curlen+reqlen+nextdiff);
     p = zl+offset;
 
@@ -545,13 +547,13 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
             ZIPLIST_TAIL_OFFSET(zl) += nextdiff;
     } else {
         /* This element will be the new tail. */
-        ZIPLIST_TAIL_OFFSET(zl) = p-zl;
+        ZIPLIST_TAIL_OFFSET(zl) = (UINT32)(p-zl);
     }
 
     /* When nextdiff != 0, the raw length of the next entry has changed, so
      * we need to cascade the update throughout the ziplist */
     if (nextdiff != 0) {
-        offset = p-zl;
+        offset = (unsigned int)(p-zl);
         zl = __ziplistCascadeUpdate(zl,p+reqlen);
         p = zl+offset;
     }
@@ -665,7 +667,7 @@ unsigned char *ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char 
  * Also update *p in place, to be able to iterate over the
  * ziplist, while deleting entries. */
 unsigned char *ziplistDelete(unsigned char *zl, unsigned char **p) {
-    unsigned int offset = *p-zl;
+    unsigned int offset = (unsigned int)(*p-zl);
     zl = __ziplistDelete(zl,*p,1);
 
     /* Store pointer to current element in p, because ziplistDelete will
@@ -749,7 +751,11 @@ void ziplistRepr(unsigned char *zl) {
         entry = zipEntry(p);
         printf(
             "{"
+#ifdef _WIN64
+                "addr 0x%08llx, "
+#else
                 "addr 0x%08lx, "
+#endif
                 "index %2d, "
                 "offset %5ld, "
                 "rl: %5u, "
@@ -758,13 +764,13 @@ void ziplistRepr(unsigned char *zl) {
                 "pls: %2u, "
                 "payload %5u"
             "} ",
-            (long unsigned int)p,
-            index,
-#ifdef _WIN32
-            (long int) (p-zl),
+#ifdef _WIN64
+            (unsigned long long)p,
 #else
-            p-zl,
+            (long unsigned)p,
 #endif
+            index,
+            (unsigned long) (p-zl),
             entry.headersize+entry.len,
             entry.headersize,
             entry.prevrawlen,
@@ -773,10 +779,11 @@ void ziplistRepr(unsigned char *zl) {
         p += entry.headersize;
         if (ZIP_IS_STR(entry.encoding)) {
             if (entry.len > 40) {
-                fwrite(p,40,1,stdout);
+                if (fwrite(p,40,1,stdout) == 0) perror("fwrite");
                 printf("...");
             } else {
-                fwrite(p,entry.len,1,stdout);
+                if (entry.len &&
+                    fwrite(p,entry.len,1,stdout) == 0) perror("fwrite");
             }
         } else {
             printf("%lld", (long long) zipLoadInteger(p,entry.encoding));
@@ -865,7 +872,7 @@ void pop(unsigned char *zl, int where) {
             printf("Pop tail: ");
 
         if (vstr)
-            fwrite(vstr,vlen,1,stdout);
+            if (vlen && fwrite(vstr,vlen,1,stdout) == 0) perror("fwrite");
         else
             printf("%lld", vlong);
 
@@ -940,7 +947,7 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (entry) {
-            fwrite(entry,elen,1,stdout);
+            if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             printf("\n");
         } else {
             printf("%lld\n", value);
@@ -970,7 +977,7 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (entry) {
-            fwrite(entry,elen,1,stdout);
+            if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             printf("\n");
         } else {
             printf("%lld\n", value);
@@ -987,7 +994,7 @@ int main(int argc, char **argv) {
             return 1;
         }
         if (entry) {
-            fwrite(entry,elen,1,stdout);
+            if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             printf("\n");
         } else {
             printf("%lld\n", value);
@@ -1015,7 +1022,7 @@ int main(int argc, char **argv) {
         while (ziplistGet(p, &entry, &elen, &value)) {
             printf("Entry: ");
             if (entry) {
-                fwrite(entry,elen,1,stdout);
+                if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             } else {
                 printf("%lld", value);
             }
@@ -1032,7 +1039,7 @@ int main(int argc, char **argv) {
         while (ziplistGet(p, &entry, &elen, &value)) {
             printf("Entry: ");
             if (entry) {
-                fwrite(entry,elen,1,stdout);
+                if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             } else {
                 printf("%lld", value);
             }
@@ -1049,7 +1056,7 @@ int main(int argc, char **argv) {
         while (ziplistGet(p, &entry, &elen, &value)) {
             printf("Entry: ");
             if (entry) {
-                fwrite(entry,elen,1,stdout);
+                if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             } else {
                 printf("%lld", value);
             }
@@ -1078,7 +1085,7 @@ int main(int argc, char **argv) {
         while (ziplistGet(p, &entry, &elen, &value)) {
             printf("Entry: ");
             if (entry) {
-                fwrite(entry,elen,1,stdout);
+                if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             } else {
                 printf("%lld", value);
             }
@@ -1095,7 +1102,7 @@ int main(int argc, char **argv) {
         while (ziplistGet(p, &entry, &elen, &value)) {
             printf("Entry: ");
             if (entry) {
-                fwrite(entry,elen,1,stdout);
+                if (elen && fwrite(entry,elen,1,stdout) == 0) perror("fwrite");
             } else {
                 printf("%lld", value);
             }
@@ -1152,7 +1159,8 @@ int main(int argc, char **argv) {
             } else {
                 printf("Entry: ");
                 if (entry) {
-                    fwrite(entry,elen,1,stdout);
+                    if (elen && fwrite(entry,elen,1,stdout) == 0)
+                        perror("fwrite");
                 } else {
                     printf("%lld",value);
                 }

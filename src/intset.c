@@ -38,9 +38,9 @@ static void _intsetSet(intset *is, int pos, int64_t value) {
     if (is->encoding == INTSET_ENC_INT64)
         ((int64_t*)is->contents)[pos] = value;
     else if (is->encoding == INTSET_ENC_INT32)
-        ((int32_t*)is->contents)[pos] = value;
+        ((int32_t*)is->contents)[pos] = (int32_t) value;
     else
-        ((int16_t*)is->contents)[pos] = value;
+        ((int16_t*)is->contents)[pos] = (int16_t) value;
 }
 
 /* Create an empty intset. */

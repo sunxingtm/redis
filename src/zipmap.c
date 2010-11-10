@@ -233,7 +233,7 @@ unsigned char *zipmapSet(unsigned char *zm, unsigned char *key, unsigned int kle
             /* Store the offset of this key within the current zipmap, so
              * it can be resized. Then, move the tail backwards so this
              * pair fits at the current position. */
-            offset = p-zm;
+            offset = (unsigned int)(p-zm);
             zm = zipmapResize(zm, zmlen-freelen+reqlen);
             p = zm+offset;
 
@@ -253,7 +253,7 @@ unsigned char *zipmapSet(unsigned char *zm, unsigned char *key, unsigned int kle
     if (empty >= ZIPMAP_VALUE_MAX_FREE) {
         /* First, move the tail <empty> bytes to the front, then resize
          * the zipmap to be <empty> bytes smaller. */
-        offset = p-zm;
+        offset = (unsigned int)(p-zm);
         memmove(p+reqlen, p+freelen, zmlen-(offset+freelen+1));
         zmlen -= empty;
         zm = zipmapResize(zm, zmlen);
@@ -374,14 +374,14 @@ void zipmapRepr(unsigned char *p) {
             l = zipmapDecodeLength(p);
             printf("{key %u}",l);
             p += zipmapEncodeLength(NULL,l);
-            fwrite(p,l,1,stdout);
+            if (l != 0 && fwrite(p,l,1,stdout) == 0) perror("fwrite");
             p += l;
 
             l = zipmapDecodeLength(p);
             printf("{value %u}",l);
             p += zipmapEncodeLength(NULL,l);
             e = *p++;
-            fwrite(p,l,1,stdout);
+            if (l != 0 && fwrite(p,l,1,stdout) == 0) perror("fwrite");
             p += l+e;
             if (e) {
                 printf("[");

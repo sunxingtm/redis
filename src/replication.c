@@ -96,7 +96,11 @@ void replicationFeedMonitors(list *monitors, int dictid, robj **argv, int argc) 
 
     for (j = 0; j < argc; j++) {
         if (argv[j]->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+            cmdrepr = sdscatprintf(cmdrepr, "\"%lld\"", (long long)argv[j]->ptr);
+#else
             cmdrepr = sdscatprintf(cmdrepr, "\"%ld\"", (long)argv[j]->ptr);
+#endif
         } else {
             cmdrepr = sdscatrepr(cmdrepr,(char*)argv[j]->ptr,
                         sdslen(argv[j]->ptr));
@@ -113,80 +117,6 @@ void replicationFeedMonitors(list *monitors, int dictid, robj **argv, int argc) 
         addReply(monitor,cmdobj);
     }
     decrRefCount(cmdobj);
-}
-
-int syncWrite(int fd, char *ptr, ssize_t size, int timeout) {
-    ssize_t nwritten, ret = size;
-    time_t start = time(NULL);
-
-    timeout++;
-    while(size) {
-        if (aeWait(fd,AE_WRITABLE,1000) & AE_WRITABLE) {
-#ifdef _WIN32
-            nwritten = send(fd,ptr,size,0);
-            if (nwritten == -1) errno = WSAGetLastError();
-            if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
-                errno = EAGAIN;
-#else
-            nwritten = write(fd,ptr,size);
-#endif
-            if (nwritten == -1) return -1;
-            ptr += nwritten;
-            size -= nwritten;
-        }
-        if ((time(NULL)-start) > timeout) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
-    }
-    return ret;
-}
-
-int syncRead(int fd, char *ptr, ssize_t size, int timeout) {
-    ssize_t nread, totread = 0;
-    time_t start = time(NULL);
-
-    timeout++;
-    while(size) {
-        if (aeWait(fd,AE_READABLE,1000) & AE_READABLE) {
-#ifdef _WIN32
-            nread = recv(fd,ptr,size,0);
-#else
-            nread = read(fd,ptr,size);
-#endif
-            if (nread <= 0) return -1;
-            ptr += nread;
-            size -= nread;
-            totread += nread;
-        }
-        if ((time(NULL)-start) > timeout) {
-
-            errno = ETIMEDOUT;
-            return -1;
-        }
-    }
-    return totread;
-}
-
-int syncReadLine(int fd, char *ptr, ssize_t size, int timeout) {
-    ssize_t nread = 0;
-
-    size--;
-    while(size) {
-        char c;
-
-        if (syncRead(fd,&c,1,timeout) == -1) return -1;
-        if (c == '\n') {
-            *ptr = '\0';
-            if (nread && *(ptr-1) == '\r') *(ptr-1) = '\0';
-            return nread;
-        } else {
-            *ptr++ = c;
-            *ptr = '\0';
-            nread++;
-        }
-    }
-    return nread;
 }
 
 void syncCommand(redisClient *c) {
@@ -253,7 +183,7 @@ void syncCommand(redisClient *c) {
     c->slaveseldb = 0;
     listAddNodeTail(server.slaves,c);
 #ifdef _WIN32
-   /* Since WIN32 won't fork(), nut instead do Save() we must manualy call this */
+   /* Since WIN32 won't fork(),  but instead do Save() we must manualy call this */
    updateSlavesWaitingBgsave(REDIS_OK);
 #endif
     return;
@@ -276,7 +206,7 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
         bulkcount = sdscatprintf(sdsempty(),"$%lld\r\n",(unsigned long long)
             slave->repldbsize);
 #ifdef _WIN32
-        if (send(fd,bulkcount,sdslen(bulkcount),0) != (signed)sdslen(bulkcount))
+        if (send(fd,bulkcount,(int)sdslen(bulkcount),0) != (signed)sdslen(bulkcount))
         {
             sdsfree(bulkcount);
             freeClient(slave);
@@ -301,7 +231,7 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 #ifdef _WIN32
-    if ((nwritten = send(fd,buf,buflen,0)) == -1) {
+    if ((nwritten = send(fd,buf,(int)buflen,0)) == -1) {
         redisLog(REDIS_VERBOSE,"Write error sending DB to slave: %s",
             strerror(errno));
         freeClient(slave);
@@ -395,11 +325,19 @@ int syncWithMaster(void) {
     int fd = anetTcpConnect(NULL,server.masterhost,server.masterport);
     int dfd, maxtries = 5;
 
+#ifdef _WIN32
+    if ((unsigned)fd == INVALID_SOCKET) {
+        redisLog(REDIS_WARNING,"Unable to connect to MASTER: %s",
+            strerror(errno));
+        return REDIS_ERR;
+    }
+#else
     if (fd == -1) {
         redisLog(REDIS_WARNING,"Unable to connect to MASTER: %s",
             strerror(errno));
         return REDIS_ERR;
     }
+#endif
 
     /* AUTH with the master if required. */
     if(server.masterauth) {
@@ -426,7 +364,11 @@ int syncWithMaster(void) {
             return REDIS_ERR;
         }
         if (buf[0] != '+') {
+#ifdef _WIN32
+            closesocket(fd);
+#else
             close(fd);
+#endif
             redisLog(REDIS_WARNING,"Cannot AUTH to MASTER, is the masterauth password correct?");
             return REDIS_ERR;
         }

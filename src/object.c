@@ -5,22 +5,12 @@
 #include <math.h>
 
 robj *createObject(int type, void *ptr) {
-    robj *o;
-
-    if (server.vm_enabled) pthread_mutex_lock(&server.obj_freelist_mutex);
-    if (listLength(server.objfreelist)) {
-        listNode *head = listFirst(server.objfreelist);
-        o = listNodeValue(head);
-        listDelNode(server.objfreelist,head);
-        if (server.vm_enabled) pthread_mutex_unlock(&server.obj_freelist_mutex);
-    } else {
-        if (server.vm_enabled) pthread_mutex_unlock(&server.obj_freelist_mutex);
-        o = zmalloc(sizeof(*o));
-    }
+    robj *o = zmalloc(sizeof(*o));
     o->type = type;
     o->encoding = REDIS_ENCODING_RAW;
     o->ptr = ptr;
     o->refcount = 1;
+
     /* Set the LRU to the current lruclock (minutes resolution).
      * We do this regardless of the fact VM is active as LRU is also
      * used for the maxmemory directive when Redis is used as cache.
@@ -51,7 +41,11 @@ robj *createStringObjectFromLongLong(long long value) {
         if (value >= LONG_MIN && value <= LONG_MAX) {
             o = createObject(REDIS_STRING, NULL);
             o->encoding = REDIS_ENCODING_INT;
+#ifdef _WIN64
+            o->ptr = (void*)((long long)value);
+#else
             o->ptr = (void*)((long)value);
+#endif
         } else {
             o = createObject(REDIS_STRING,sdsfromlonglong(value));
         }
@@ -206,11 +200,7 @@ void decrRefCount(void *obj) {
         default: redisPanic("Unknown object type"); break;
         }
         o->ptr = NULL; /* defensive programming. We'll see NULL in traces. */
-        if (server.vm_enabled) pthread_mutex_lock(&server.obj_freelist_mutex);
-        if (listLength(server.objfreelist) > REDIS_OBJFREELIST_MAX ||
-            !listAddNodeHead(server.objfreelist,o))
-            zfree(o);
-        if (server.vm_enabled) pthread_mutex_unlock(&server.obj_freelist_mutex);
+        zfree(o);
     }
 }
 
@@ -224,7 +214,11 @@ int checkType(redisClient *c, robj *o, int type) {
 
 /* Try to encode a string object in order to save space */
 robj *tryObjectEncoding(robj *o) {
+#ifdef _WIN64
+    long long value;
+#else
     long value;
+#endif
     sds s = o->ptr;
 
     if (o->encoding != REDIS_ENCODING_RAW)
@@ -239,7 +233,11 @@ robj *tryObjectEncoding(robj *o) {
     redisAssert(o->type == REDIS_STRING);
 
     /* Check if we can represent this string as a long integer */
+#ifdef _WIN64
+    if (isStringRepresentableAsLongLong(s,&value) == REDIS_ERR) return o;
+#else
     if (isStringRepresentableAsLong(s,&value) == REDIS_ERR) return o;
+#endif
 
     /* Ok, this object can be encoded...
      *
@@ -276,8 +274,11 @@ robj *getDecodedObject(robj *o) {
     }
     if (o->type == REDIS_STRING && o->encoding == REDIS_ENCODING_INT) {
         char buf[32];
-
+#ifdef _WIN64
+        ll2string(buf,32,(long long)o->ptr);
+#else
         ll2string(buf,32,(long)o->ptr);
+#endif
         dec = createStringObject(buf,strlen(buf));
         return dec;
     } else {
@@ -300,14 +301,22 @@ int compareStringObjects(robj *a, robj *b) {
 
     if (a == b) return 0;
     if (a->encoding != REDIS_ENCODING_RAW) {
+#ifdef _WIN64
+        ll2string(bufa,sizeof(bufa),(long long) a->ptr);
+#else
         ll2string(bufa,sizeof(bufa),(long) a->ptr);
+#endif
         astr = bufa;
         bothsds = 0;
     } else {
         astr = a->ptr;
     }
     if (b->encoding != REDIS_ENCODING_RAW) {
+#ifdef _WIN64
+        ll2string(bufb,sizeof(bufb),(long long) b->ptr);
+#else
         ll2string(bufb,sizeof(bufb),(long) b->ptr);
+#endif
         bstr = bufb;
         bothsds = 0;
     } else {
@@ -334,8 +343,11 @@ size_t stringObjectLen(robj *o) {
         return sdslen(o->ptr);
     } else {
         char buf[32];
-
+#ifdef _WIN64
+        return ll2string(buf,32,(long long)o->ptr);
+#else
         return ll2string(buf,32,(long)o->ptr);
+#endif
     }
 }
 
@@ -351,7 +363,11 @@ int getDoubleFromObject(robj *o, double *target) {
             value = strtod(o->ptr, &eptr);
             if (eptr[0] != '\0' || isnan(value)) return REDIS_ERR;
         } else if (o->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+            value = (long long)o->ptr;
+#else
             value = (long)o->ptr;
+#endif
         } else {
             redisPanic("Unknown string encoding");
         }
@@ -390,7 +406,11 @@ int getLongLongFromObject(robj *o, long long *target) {
             if (errno == ERANGE && (value == LLONG_MIN || value == LLONG_MAX))
                 return REDIS_ERR;
         } else if (o->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+            value = (long long)o->ptr;
+#else
             value = (long)o->ptr;
+#endif
         } else {
             redisPanic("Unknown string encoding");
         }
@@ -428,7 +448,7 @@ int getLongFromObjectOrReply(redisClient *c, robj *o, long *target, const char *
         return REDIS_ERR;
     }
 
-    *target = value;
+    *target = (long) value;
     return REDIS_OK;
 }
 

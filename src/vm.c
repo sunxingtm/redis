@@ -122,7 +122,6 @@ void vmInit(void) {
 #ifndef _WIN32
     /* moved to InitSharedObjecsts since they are first time used there */
     pthread_mutex_init(&server.io_mutex,NULL);
-    pthread_mutex_init(&server.obj_freelist_mutex,NULL);
     pthread_mutex_init(&server.io_swapfile_mutex,NULL);
 #endif
     server.io_active_threads = 0;
@@ -412,7 +411,11 @@ double computeObjectSwappability(robj *o) {
     /* actual age can be >= minage, but not < minage. As we use wrapping
      * 21 bit clocks with minutes resolution for the LRU. */
     time_t minage = estimateObjectIdleTime(o);
+#ifdef _WIN32
+    ssize_t asize = 0, elesize;
+#else
     long asize = 0, elesize;
+#endif
     robj *ele;
     list *l;
     listNode *ln;
@@ -426,7 +429,11 @@ double computeObjectSwappability(robj *o) {
         if (o->encoding != REDIS_ENCODING_RAW) {
             asize = sizeof(*o);
         } else {
+#ifdef _WIN32
+            asize = sdslen(o->ptr)+sizeof(*o)+sizeof(size_t)*2;
+#else
             asize = sdslen(o->ptr)+sizeof(*o)+sizeof(long)*2;
+#endif
         }
         break;
     case REDIS_LIST:
@@ -493,7 +500,7 @@ double computeObjectSwappability(robj *o) {
         }
         break;
     }
-    return (double)minage*log(1+asize);
+    return (double)minage*log(1+(double)asize);
 }
 
 /* Try to swap an object that's a good candidate for swapping.
@@ -923,9 +930,60 @@ void *IOThreadEntryPoint(void *arg) {
     return NULL; /* never reached */
 }
 
+#ifdef _WIN32
+/* Proxy structure to pass fnuc and arg to thread */
+typedef struct thread_params
+{
+    void *(*func)(void *);
+    void * arg;
+} thread_params;
+
+/* Proxy function by windows thread requirements */
+static unsigned __stdcall win32_proxy_threadproc(void *arg) {
+
+    thread_params *p = (thread_params *) arg;
+    p->func(p->arg);
+
+    /* Dealocate params */
+    zfree(p);
+
+    _endthreadex(0);
+	return 0;
+}
+
+int pthread_create(pthread_t *thread, const void *unused,
+		   void *(*start_routine)(void*), void *arg) {
+
+    REDIS_NOTUSED(unused);
+    HANDLE h;
+    thread_params *params = zmalloc(sizeof(thread_params));
+
+    params->func = start_routine;
+    params->arg  = arg;
+
+    /*  Arguments not supported in this port */
+    if (arg) exit(1);
+
+    REDIS_NOTUSED(arg);
+	h =(HANDLE) _beginthreadex(NULL,  /* Security not used */
+                               REDIS_THREAD_STACK_SIZE, /* Set custom stack size */
+                               win32_proxy_threadproc,  /* calls win32 stdcall proxy */
+                               params, /* real threadproc is passed as paremeter */
+                               STACK_SIZE_PARAM_IS_A_RESERVATION,  /* reserve stack */
+                               thread /* returned thread id */
+                );
+
+	if (!h)
+		return errno;
+
+    CloseHandle(h);
+	return 0;
+}
+#endif
+
 void spawnIOThread(void) {
     pthread_t thread;
-    sigset_t mask, omask;
+    _sigset_t mask, omask;
     int err;
 
     sigemptyset(&mask);

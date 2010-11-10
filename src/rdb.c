@@ -104,7 +104,7 @@ int rdbSaveLzfStringObject(FILE *fp, unsigned char *s, size_t len) {
     if (len <= 4) return 0;
     outlen = len-4;
     if ((out = zmalloc(outlen+1)) == NULL) return 0;
-    comprlen = lzf_compress(s, len, out, outlen);
+    comprlen = lzf_compress(s, (int)len, out, (unsigned int)outlen);
     if (comprlen == 0) {
         zfree(out);
         return 0;
@@ -112,11 +112,11 @@ int rdbSaveLzfStringObject(FILE *fp, unsigned char *s, size_t len) {
     /* Data compressed! Let's save it on disk */
     byte = (REDIS_RDB_ENCVAL<<6)|REDIS_RDB_ENC_LZF;
     if (fwrite(&byte,1,1,fp) == 0) goto writeerr;
-    if (rdbSaveLen(fp,comprlen) == -1) goto writeerr;
-    if (rdbSaveLen(fp,len) == -1) goto writeerr;
+    if (rdbSaveLen(fp,(UINT32)comprlen) == -1) goto writeerr;
+    if (rdbSaveLen(fp,(UINT32)len) == -1) goto writeerr;
     if (fwrite(out,comprlen,1,fp) == 0) goto writeerr;
     zfree(out);
-    return comprlen;
+    return (int)comprlen;
 
 writeerr:
     zfree(out);
@@ -149,7 +149,7 @@ int rdbSaveRawString(FILE *fp, unsigned char *s, size_t len) {
     }
 
     /* Store verbatim */
-    if (rdbSaveLen(fp,len) == -1) return -1;
+    if (rdbSaveLen(fp,(UINT32)len) == -1) return -1;
     if (len && fwrite(s,len,1,fp) == 0) return -1;
     return 0;
 }
@@ -175,7 +175,11 @@ int rdbSaveStringObject(FILE *fp, robj *obj) {
     /* Avoid to decode the object, then encode it again, if the
      * object is alrady integer encoded. */
     if (obj->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        return rdbSaveLongLongAsStringObject(fp,(long long)obj->ptr);
+#else
         return rdbSaveLongLongAsStringObject(fp,(long)obj->ptr);
+#endif
     } else {
         redisAssert(obj->encoding == REDIS_ENCODING_RAW);
         return rdbSaveRawString(fp,obj->ptr,sdslen(obj->ptr));
@@ -218,7 +222,7 @@ int rdbSaveDoubleValue(FILE *fp, double val) {
         else
 #endif
             snprintf((char*)buf+1,sizeof(buf)-1,"%.17g",val);
-        buf[0] = strlen((char*)buf+1);
+        buf[0] = (unsigned char)strlen((char*)buf+1);
         len = buf[0]+1;
     }
     if (fwrite(buf,len,1,fp) == 0) return -1;
@@ -271,7 +275,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
             dictIterator *di = dictGetIterator(set);
             dictEntry *de;
 
-            if (rdbSaveLen(fp,dictSize(set)) == -1) return -1;
+            if (rdbSaveLen(fp,(UINT32)dictSize(set)) == -1) return -1;
             while((de = dictNext(di)) != NULL) {
                 robj *eleobj = dictGetEntryKey(de);
                 if (rdbSaveStringObject(fp,eleobj) == -1) return -1;
@@ -295,7 +299,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
         dictIterator *di = dictGetIterator(zs->dict);
         dictEntry *de;
 
-        if (rdbSaveLen(fp,dictSize(zs->dict)) == -1) return -1;
+        if (rdbSaveLen(fp,(UINT32)dictSize(zs->dict)) == -1) return -1;
         while((de = dictNext(di)) != NULL) {
             robj *eleobj = dictGetEntryKey(de);
             double *score = dictGetEntryVal(de);
@@ -321,7 +325,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
             dictIterator *di = dictGetIterator(o->ptr);
             dictEntry *de;
 
-            if (rdbSaveLen(fp,dictSize((dict*)o->ptr)) == -1) return -1;
+            if (rdbSaveLen(fp,(UINT32)dictSize((dict*)o->ptr)) == -1) return -1;
             while((de = dictNext(di)) != NULL) {
                 robj *key = dictGetEntryKey(de);
                 robj *val = dictGetEntryVal(de);
@@ -348,7 +352,7 @@ off_t rdbSavedObjectLen(robj *o, FILE *fp) {
 #ifdef _WIN32
     fflush(fp);
 #endif
-    return ftello(fp);
+    return (off_t) ftello(fp);
 }
 
 /* Return the number of pages required to save this object in the swap file */
@@ -470,7 +474,12 @@ int rdbSaveBackground(char *filename) {
     if ((childpid = fork()) == 0) {
         /* Child */
         if (server.vm_enabled) vmReopenSwapFile();
-        close(server.fd);
+#ifdef _WIN32
+        if (server.ipfd > 0) closesocket(server.ipfd);
+#else
+        if (server.ipfd > 0) close(server.ipfd);
+#endif
+        if (server.sofd > 0) close(server.sofd);
         if (rdbSave(filename) == REDIS_OK) {
             _exit(0);
         } else {
@@ -699,7 +708,7 @@ robj *rdbLoadObject(int type, FILE *fp) {
 
             if (o->encoding == REDIS_ENCODING_ZIPLIST) {
                 dec = getDecodedObject(ele);
-                o->ptr = ziplistPush(o->ptr,dec->ptr,sdslen(dec->ptr),REDIS_TAIL);
+                o->ptr = ziplistPush(o->ptr,dec->ptr,(unsigned int)sdslen(dec->ptr),REDIS_TAIL);
                 decrRefCount(dec);
                 decrRefCount(ele);
             } else {
@@ -800,8 +809,8 @@ robj *rdbLoadObject(int type, FILE *fp) {
                 /* We need raw string objects to add them to the zipmap */
                 deckey = getDecodedObject(key);
                 decval = getDecodedObject(val);
-                zm = zipmapSet(zm,deckey->ptr,sdslen(deckey->ptr),
-                                  decval->ptr,sdslen(decval->ptr),NULL);
+                zm = zipmapSet(zm,deckey->ptr,(unsigned int)sdslen(deckey->ptr),
+                                  decval->ptr,(unsigned int)sdslen(decval->ptr),NULL);
                 o->ptr = zm;
                 decrRefCount(deckey);
                 decrRefCount(decval);

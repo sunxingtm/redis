@@ -40,7 +40,7 @@ robj *hashTypeGet(robj *o, robj *key) {
         unsigned char *v;
         unsigned int vlen;
         key = getDecodedObject(key);
-        if (zipmapGet(o->ptr,key->ptr,sdslen(key->ptr),&v,&vlen)) {
+        if (zipmapGet(o->ptr,key->ptr,(unsigned int)sdslen(key->ptr),&v,&vlen)) {
             value = createStringObject((char*)v,vlen);
         }
         decrRefCount(key);
@@ -59,7 +59,7 @@ robj *hashTypeGet(robj *o, robj *key) {
 int hashTypeExists(robj *o, robj *key) {
     if (o->encoding == REDIS_ENCODING_ZIPMAP) {
         key = getDecodedObject(key);
-        if (zipmapExists(o->ptr,key->ptr,sdslen(key->ptr))) {
+        if (zipmapExists(o->ptr,key->ptr,(unsigned int)sdslen(key->ptr))) {
             decrRefCount(key);
             return 1;
         }
@@ -80,8 +80,8 @@ int hashTypeSet(robj *o, robj *key, robj *value) {
         key = getDecodedObject(key);
         value = getDecodedObject(value);
         o->ptr = zipmapSet(o->ptr,
-            key->ptr,sdslen(key->ptr),
-            value->ptr,sdslen(value->ptr), &update);
+            key->ptr,(unsigned int)sdslen(key->ptr),
+            value->ptr,(unsigned int)sdslen(value->ptr), &update);
         decrRefCount(key);
         decrRefCount(value);
 
@@ -107,7 +107,7 @@ int hashTypeDelete(robj *o, robj *key) {
     int deleted = 0;
     if (o->encoding == REDIS_ENCODING_ZIPMAP) {
         key = getDecodedObject(key);
-        o->ptr = zipmapDel(o->ptr,key->ptr,sdslen(key->ptr), &deleted);
+        o->ptr = zipmapDel(o->ptr,key->ptr,(unsigned int)sdslen(key->ptr), &deleted);
         decrRefCount(key);
     } else {
         deleted = dictDelete((dict*)o->ptr,key) == DICT_OK;
@@ -310,6 +310,7 @@ void hmgetCommand(redisClient *c) {
     o = lookupKeyRead(c->db,c->argv[1]);
     if (o != NULL && o->type != REDIS_HASH) {
         addReply(c,shared.wrongtypeerr);
+        return;
     }
 
     /* Note the check for o != NULL happens inside the loop. This is

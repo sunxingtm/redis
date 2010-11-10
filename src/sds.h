@@ -33,6 +33,9 @@
 
 #include <sys/types.h>
 #include <stdarg.h>
+#ifdef _MSC_VER
+    #include <stddef.h>
+#endif
 
 typedef char *sds;
 

@@ -59,7 +59,7 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     aeApiState *state = eventLoop->apidata;
     int retval, j, numevents = 0;
-    DWORD pipe_is_on;
+    DWORD pipe_is_on=0;
 
     memcpy(&state->_rfds,&state->rfds,sizeof(fd_set));
     memcpy(&state->_wfds,&state->wfds,sizeof(fd_set));

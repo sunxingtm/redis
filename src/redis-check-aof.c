@@ -13,7 +13,7 @@
       //#define strncasecmp(x,y,l) (*(x)=(y) ? 1 : 0)
     #endif
 
-    int _fmode = _O_BINARY;
+   int _fmode = _O_BINARY;
 #endif
 
 #define ERROR(...) { \

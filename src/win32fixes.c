@@ -1,12 +1,12 @@
 #ifdef _WIN32
 
-#include <windows.h>
 #include <process.h>
 #include <errno.h>
 #include <winsock2.h>
+#include <windows.h>
 #include <signal.h>
-#include "redis.h"
 #include "win32fixes.h"
+#define REDIS_NOTUSED(V) ((void) V)
 
 /* Winsock requires library initialization on startup  */
 int w32initWinSock(void) {
@@ -46,7 +46,7 @@ int w32CeaseAndDesist(pid_t pid) {
 
 /* Behaves as posix, works withot ifdefs, makes compiler happy */
 int sigaction(int sig, struct sigaction *in, struct sigaction *out) {
-    REDIS_NOTUSED(out);
+    REDIS_NOTUSED(out); //not used
 
     /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
      * is used. Otherwise, sa_handler is used */
@@ -111,7 +111,18 @@ pid_t wait3(int *stat_loc, int options, void *rusage) {
     REDIS_NOTUSED(stat_loc);
     REDIS_NOTUSED(options);
     REDIS_NOTUSED(rusage);
-    return waitpid((pid_t) -1, 0, WAIT_FLAGS);
+    return (pid_t) waitpid((intptr_t) -1, 0, WAIT_FLAGS);
+}
+
+/* Replace MS C rtl rand which is 15bit with 32 bit */
+int replace_random() {
+#if defined(_WIN64) || defined(_MSC_VER)
+    unsigned int x=0;
+    RtlGenRandom(&x, sizeof(UINT_MAX));
+    return x;
+#else
+    return rand() * rand();
+#endif
 }
 
 /* BSD sockets compatibile replacement */
@@ -127,55 +138,6 @@ int replace_rename(const char *src, const char *dst) {
     else
         /* On error we will return generic eroor code without GetLastError() */
         return EIO;
-}
-
-/* Proxy structure to pass fnuc and arg to thread */
-typedef struct thread_params
-{
-    void *(*func)(void *);
-    void * arg;
-} thread_params;
-
-/* Proxy function by windows thread requirements */
-static unsigned __stdcall win32_proxy_threadproc(void *arg) {
-
-    thread_params *p = arg;
-    p->func(p->arg);
-
-    /* Dealocate params */
-    zfree(p);
-
-    _endthreadex(0);
-	return 0;
-}
-
-int pthread_create(pthread_t *thread, const void *unused,
-		   void *(*start_routine)(void*), void *arg) {
-
-    REDIS_NOTUSED(unused);
-    HANDLE h;
-    thread_params *params = zmalloc(sizeof(thread_params));
-
-    params->func = start_routine;
-    params->arg  = arg;
-
-    /*  Arguments not supported in this port */
-    if (arg) exit(1);
-
-    REDIS_NOTUSED(arg);
-	h =(HANDLE) _beginthreadex(NULL,  /* Security not used */
-                               REDIS_THREAD_STACK_SIZE, /* Set custom stack size */
-                               win32_proxy_threadproc,  /* calls win32 stdcall proxy */
-                               params, /* real threadproc is passed as paremeter */
-                               STACK_SIZE_PARAM_IS_A_RESERVATION,  /* reserve stack */
-                               thread /* returned thread id */
-                );
-
-	if (!h)
-		return errno;
-
-    CloseHandle(h);
-	return 0;
 }
 
 /* Noop in windows */

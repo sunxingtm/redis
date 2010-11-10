@@ -6,7 +6,6 @@
 #ifdef _WIN32
   #include <inttypes.h>
   #include "win32fixes.h"
-  int _fmode = _O_BINARY;  
 #else
   #include <sys/mman.h>
   #include <arpa/inet.h>  
@@ -674,6 +673,13 @@ int main(int argc, char **argv) {
     off_t size;
     struct stat stat;
     void *data;
+
+#ifdef _WIN32
+    _fmode = _O_BINARY;
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+#endif
 
     fd = open(argv[1], O_RDONLY);
     if (fd < 1) {

@@ -37,15 +37,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include "config.h"
 
-#if defined(__sun)
-#define PREFIX_SIZE sizeof(long long)
+#ifdef HAVE_MALLOC_SIZE
+#define PREFIX_SIZE (0)
 #else
-#define PREFIX_SIZE sizeof(size_t)
+#if defined(__sun)
+#define PREFIX_SIZE (sizeof(long long))
+#else
+#define PREFIX_SIZE (sizeof(size_t))
+#endif
 #endif
 
+/* Explicitly override malloc/free etc when using tcmalloc. */
+#if defined(USE_TCMALLOC)
+#define malloc(size) tc_malloc(size)
+#define calloc(count,size) tc_calloc(count,size)
+#define realloc(ptr,size) tc_realloc(ptr,size)
+#define free(ptr) tc_free(ptr)
+#endif
+#ifdef _WIN32
+#define increment_used_memory(__n) do { \
+    size_t _n = (__n); \
+    if (_n&(sizeof(size_t)-1)) _n += sizeof(size_t)-(_n&(sizeof(size_t)-1)); \
+    if (zmalloc_thread_safe) { \
+        pthread_mutex_lock(&used_memory_mutex);  \
+        used_memory += _n; \
+        pthread_mutex_unlock(&used_memory_mutex); \
+    } else { \
+        used_memory += _n; \
+    } \
+} while(0)
+
+#define decrement_used_memory(__n) do { \
+    size_t _n = (__n); \
+    if (_n&(sizeof(size_t)-1)) _n += sizeof(size_t)-(_n&(sizeof(size_t)-1)); \
+    if (zmalloc_thread_safe) { \
+        pthread_mutex_lock(&used_memory_mutex);  \
+        used_memory -= _n; \
+        pthread_mutex_unlock(&used_memory_mutex); \
+    } else { \
+        used_memory -= _n; \
+    } \
+} while(0)
+#else
 #define increment_used_memory(__n) do { \
     size_t _n = (__n); \
     if (_n&(sizeof(long)-1)) _n += sizeof(long)-(_n&(sizeof(long)-1)); \
@@ -69,7 +104,7 @@
         used_memory -= _n; \
     } \
 } while(0)
-
+#endif
 static size_t used_memory = 0;
 static int zmalloc_thread_safe = 0;
 #ifdef _WIN32
@@ -79,8 +114,13 @@ pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static void zmalloc_oom(size_t size) {
+#ifdef _WIN32
+    fprintf(stderr, "zmalloc: Out of memory trying to allocate %llu bytes\n",
+        (unsigned long long)size);
+#else
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
+#endif
     fflush(stderr);
     abort();
 }
@@ -197,7 +237,15 @@ void zmalloc_enable_thread_safeness(void) {
 }
 #endif
 
-/* Fragmentation = RSS / allocated-bytes */
+/* Get the RSS information in an OS-specific way.
+ *
+ * WARNING: the function zmalloc_get_rss() is not designed to be fast
+ * and may not be called in the busy loops where Redis tries to release
+ * memory expiring or swapping out objects.
+ *
+ * For this kind of "fast RSS reporting" usages use instead the
+ * function RedisEstimateRSS() that is a much faster (and less precise)
+ * version of the funciton. */
 
 #if defined(HAVE_PROCFS)
 #include <unistd.h>
@@ -205,8 +253,7 @@ void zmalloc_enable_thread_safeness(void) {
 #include <sys/stat.h>
 #include <fcntl.h>
 
-float zmalloc_get_fragmentation_ratio(void) {
-    size_t allocated = zmalloc_used_memory();
+size_t zmalloc_get_rss(void) {
     int page = sysconf(_SC_PAGESIZE);
     size_t rss;
     char buf[4096];
@@ -235,7 +282,7 @@ float zmalloc_get_fragmentation_ratio(void) {
 
     rss = strtoll(p,NULL,10);
     rss *= page;
-    return (float)rss/allocated;
+    return rss;
 }
 #elif defined(HAVE_TASKINFO)
 #include <unistd.h>
@@ -246,7 +293,7 @@ float zmalloc_get_fragmentation_ratio(void) {
 #include <mach/task.h>
 #include <mach/mach_init.h>
 
-float zmalloc_get_fragmentation_ratio(void) {
+size_t zmalloc_get_rss(void) {
     task_t task = MACH_PORT_NULL;
     struct task_basic_info t_info;
     mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
@@ -255,10 +302,20 @@ float zmalloc_get_fragmentation_ratio(void) {
         return 0;
     task_info(task, TASK_BASIC_INFO, (task_info_t)&t_info, &t_info_count);
 
-    return (float)t_info.resident_size/zmalloc_used_memory();
+    return t_info.resident_size;
 }
 #else
-float zmalloc_get_fragmentation_ratio(void) {
-    return 0;
+float zmalloc_get_rss(void) {
+    /* If we can't get the RSS in an OS-specific way for this system just
+     * return the memory usage we estimated in zmalloc()..
+     *
+     * Fragmentation will appear to be always 1 (no fragmentation)
+     * of course... */
+    return zmalloc_used_memory();
 }
 #endif
+
+/* Fragmentation = RSS / allocated-bytes */
+float zmalloc_get_fragmentation_ratio(void) {
+    return (float)zmalloc_get_rss()/zmalloc_used_memory();
+}

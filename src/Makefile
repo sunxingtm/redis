@@ -13,9 +13,9 @@ ifeq ($(uname_S),SunOS)
   DEBUG?= -g -rdynamic -ggdb   
 else
   ifeq ($(osname),MINGW32_NT)
-    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+    CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
     CCLINK?= --stack=4194304 -mthreads
-    LIBS?= -lws2_32 
+    LIBS?= -lws2_32
     DEBUG?= -g -ggdb 
     CC=gcc
   else
@@ -24,6 +24,11 @@ else
     DEBUG?= -g -rdynamic -ggdb     
   endif  
 endif
+
+ifeq ($(USE_TCMALLOC),yes)
+  CCLINK+= -ltcmalloc
+  CFLAGS+= -DUSE_TCMALLOC
+endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
 
@@ -31,9 +36,9 @@ PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
 INSTALL= cp -p
 
-OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o
+OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o
 BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
-CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
+CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
 CHECKAOFOBJ = redis-check-aof.o
 
@@ -45,7 +50,6 @@ CHECKAOFPRGNAME = redis-check-aof
 
 all: redis-server redis-benchmark redis-cli redis-check-dump redis-check-aof
 
-
 # Deps (use make dep to generate this)
 adlist.o: adlist.c adlist.h zmalloc.h
 ae.o: ae.c ae.h zmalloc.h config.h ae_kqueue.c
@@ -55,6 +59,7 @@ ae_select.o: ae_select.c
 anet.o: anet.c fmacros.h anet.h
 aof.o: aof.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h
+chprgname.o: chprgname.c
 config.o: config.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h
 db.o: db.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
@@ -63,7 +68,6 @@ debug.o: debug.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h sha1.h
 dict.o: dict.c fmacros.h dict.h zmalloc.h
 intset.o: intset.c intset.h zmalloc.h
-linenoise.o: linenoise.c fmacros.h
 lzf_c.o: lzf_c.c lzfP.h
 lzf_d.o: lzf_d.c lzfP.h
 multi.o: multi.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
@@ -81,8 +85,7 @@ redis-benchmark.o: redis-benchmark.c fmacros.h ae.h anet.h sds.h adlist.h \
   zmalloc.h
 redis-check-aof.o: redis-check-aof.c fmacros.h config.h
 redis-check-dump.o: redis-check-dump.c lzf.h
-redis-cli.o: redis-cli.c fmacros.h version.h anet.h sds.h adlist.h \
-  zmalloc.h linenoise.h
+redis-cli.o: redis-cli.c fmacros.h version.h sds.h adlist.h zmalloc.h
 redis.o: redis.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h
 release.o: release.c release.h
@@ -92,6 +95,7 @@ sds.o: sds.c sds.h zmalloc.h
 sha1.o: sha1.c sha1.h
 sort.o: sort.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h pqsort.h
+syncio.o: syncio.c
 t_hash.o: t_hash.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h
 t_list.o: t_list.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
@@ -120,7 +124,12 @@ redis-benchmark: $(BENCHOBJ)
 	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) $(LIBS)
 
 redis-cli: $(CLIOBJ)
-	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) $(LIBS)
+	cd ../deps/hiredis && make static
+	cd ../deps/linenoise && make
+	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(LIBS)
+
+redis-cli.o:
+	$(CC) -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) $<
 
 redis-check-dump: $(CHECKDUMPOBJ)
 	$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(LIBS)

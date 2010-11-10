@@ -56,7 +56,7 @@ void loadServerConfig(char *filename) {
         }
 
         /* Split into arguments */
-        argv = sdssplitlen(line,sdslen(line)," ",1,&argc);
+        argv = sdssplitargs(line,&argc);
         sdstolower(argv[0]);
 
         /* Execute config directives */
@@ -72,6 +72,8 @@ void loadServerConfig(char *filename) {
             }
         } else if (!strcasecmp(argv[0],"bind") && argc == 2) {
             server.bindaddr = zstrdup(argv[1]);
+        } else if (!strcasecmp(argv[0],"unixsocket") && argc == 2) {
+            server.unixsocket = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"save") && argc == 3) {
             int seconds = atoi(argv[1]);
             int changes = atoi(argv[2]);
@@ -213,16 +215,40 @@ void loadServerConfig(char *filename) {
             server.vm_pages = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"vm-max-threads") && argc == 2) {
             server.vm_max_threads = strtoll(argv[1], NULL, 10);
-        } else if (!strcasecmp(argv[0],"hash-max-zipmap-entries") && argc == 2){
+        } else if (!strcasecmp(argv[0],"hash-max-zipmap-entries") && argc == 2) {
             server.hash_max_zipmap_entries = memtoll(argv[1], NULL);
-        } else if (!strcasecmp(argv[0],"hash-max-zipmap-value") && argc == 2){
+        } else if (!strcasecmp(argv[0],"hash-max-zipmap-value") && argc == 2) {
             server.hash_max_zipmap_value = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"list-max-ziplist-entries") && argc == 2){
             server.list_max_ziplist_entries = memtoll(argv[1], NULL);
-        } else if (!strcasecmp(argv[0],"list-max-ziplist-value") && argc == 2){
+        } else if (!strcasecmp(argv[0],"list-max-ziplist-value") && argc == 2) {
             server.list_max_ziplist_value = memtoll(argv[1], NULL);
-        } else if (!strcasecmp(argv[0],"set-max-intset-entries") && argc == 2){
+        } else if (!strcasecmp(argv[0],"set-max-intset-entries") && argc == 2) {
             server.set_max_intset_entries = memtoll(argv[1], NULL);
+        } else if (!strcasecmp(argv[0],"rename-command") && argc == 3) {
+            struct redisCommand *cmd = lookupCommand(argv[1]);
+            int retval;
+
+            if (!cmd) {
+                err = "No such command in rename-command";
+                goto loaderr;
+            }
+
+            /* If the target command name is the emtpy string we just
+             * remove it from the command table. */
+            retval = dictDelete(server.commands, argv[1]);
+            redisAssert(retval == DICT_OK);
+
+            /* Otherwise we re-add the command under a different name. */
+            if (sdslen(argv[2]) != 0) {
+                sds copy = sdsdup(argv[2]);
+
+                retval = dictAdd(server.commands, copy, cmd);
+                if (retval != DICT_OK) {
+                    sdsfree(copy);
+                    err = "Target command name already exists"; goto loaderr;
+                }
+            }
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
         }
@@ -247,8 +273,11 @@ loaderr:
  *----------------------------------------------------------------------------*/
 
 void configSetCommand(redisClient *c) {
-    robj *o = getDecodedObject(c->argv[3]);
+    robj *o;
     long long ll;
+    redisAssert(c->argv[2]->encoding == REDIS_ENCODING_RAW);
+    redisAssert(c->argv[3]->encoding == REDIS_ENCODING_RAW);
+    o = c->argv[3];
 
     if (!strcasecmp(c->argv[2]->ptr,"dbfilename")) {
         zfree(server.dbfilename);
@@ -313,7 +342,6 @@ void configSetCommand(redisClient *c) {
                 if (startAppendOnly() == REDIS_ERR) {
                     addReplyError(c,
                         "Unable to turn on AOF. Check server logs.");
-                    decrRefCount(o);
                     return;
                 }
             }
@@ -355,10 +383,8 @@ void configSetCommand(redisClient *c) {
     } else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
             (char*)c->argv[2]->ptr);
-        decrRefCount(o);
         return;
     }
-    decrRefCount(o);
     addReply(c,shared.ok);
     return;
 
@@ -366,15 +392,15 @@ badfmt: /* Bad format errors */
     addReplyErrorFormat(c,"Invalid argument '%s' for CONFIG SET '%s'",
             (char*)o->ptr,
             (char*)c->argv[2]->ptr);
-    decrRefCount(o);
 }
 
 void configGetCommand(redisClient *c) {
-    robj *o = getDecodedObject(c->argv[2]);
+    robj *o = c->argv[2];
     void *replylen = addDeferredMultiBulkLength(c);
     char *pattern = o->ptr;
     char buf[128];
     int matches = 0;
+    redisAssert(o->encoding == REDIS_ENCODING_RAW);
 
     if (stringmatch(pattern,"dbfilename",0)) {
         addReplyBulkCString(c,"dbfilename");
@@ -463,7 +489,6 @@ void configGetCommand(redisClient *c) {
         sdsfree(buf);
         matches++;
     }
-    decrRefCount(o);
     setDeferredMultiBulkLength(c,replylen,matches*2);
 }
 
