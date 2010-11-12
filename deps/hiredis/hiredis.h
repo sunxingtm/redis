@@ -31,6 +31,10 @@
 #define __HIREDIS_H
 #include <stdio.h> /* for size_t */
 #include <stdarg.h> /* for va_list */
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <windows.h>
+#endif
 
 #define HIREDIS_MAJOR 0
 #define HIREDIS_MINOR 9
@@ -98,7 +102,11 @@ struct redisContext; /* need forward declaration of redisContext */
 
 /* Context for a connection to Redis */
 typedef struct redisContext {
+#ifdef _WIN32
+    SOCKET fd;
+#else
     int fd;
+#endif
     int flags;
     char *obuf; /* Write buffer */
     int err; /* Error flags, 0 when there is no error */

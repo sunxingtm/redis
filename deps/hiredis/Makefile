@@ -77,7 +77,7 @@ hiredis-example-libev: example-libev.o ${DYLIBNAME}
 	$(CC) -o $@ $(CCOPT) $(DEBUG) -L. -lhiredis -lev -Wl,-rpath,. example-libev. c ${LIBS}
 
 hiredis-%: %.o ${DYLIBNAME}
-	$(CC) -o $@ $(CCOPT) $(DEBUG) -L. -lhiredis -Wl,-rpath,. $<
+	$(CC) -o $@ $(CCOPT) $(DEBUG) -L. -lhiredis -Wl,-rpath,. $< ${LIBS}
 
 test: hiredis-test
 	./hiredis-test
