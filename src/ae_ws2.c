@@ -39,8 +39,8 @@ static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
 //        DWORD mode = PIPE_NOWAIT;
 //        SetNamedPipeHandleState(state->vm_pipe,&mode,NULL,NULL);
     } else {
-        if (mask & AE_READABLE) FD_SET((SOCKET) fd,&state->rfds);
-        if (mask & AE_WRITABLE) FD_SET((SOCKET) fd,&state->wfds);
+        if (mask & AE_READABLE) FD_SET((SOCKET)fd,&state->rfds);
+        if (mask & AE_WRITABLE) FD_SET((SOCKET)fd,&state->wfds);
     }
     return 0;
 }
@@ -51,8 +51,8 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     if (mask & AE_PIPE) {
         state->vm_pipe = INVALID_HANDLE_VALUE;
     } else {
-        if (mask & AE_READABLE) FD_CLR((SOCKET) fd,&state->rfds);
-        if (mask & AE_WRITABLE) FD_CLR((SOCKET) fd,&state->wfds);
+        if (mask & AE_READABLE) FD_CLR((SOCKET)fd,&state->rfds);
+        if (mask & AE_WRITABLE) FD_CLR((SOCKET)fd,&state->wfds);
     }
 }
 

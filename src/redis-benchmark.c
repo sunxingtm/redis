@@ -122,10 +122,6 @@ static void freeClient(client c) {
     aeDeleteFileEvent(config.el,c->context->fd,AE_READABLE);
     redisFree(c->context);
     sdsfree(c->obuf);
-#ifdef _WIN32
-    closesocket(c->fd);  
-#else  
-#endif  
     zfree(c);
     config.liveclients--;
     ln = listSearchKey(config.clients,c);
@@ -225,7 +221,7 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
 #ifdef _WIN32      
-        int nwritten = send((c->context->fd,ptr,sdslen(c->obuf)-c->written);      
+        int nwritten = send(c->context->fd,ptr,sdslen(c->obuf)-c->written, 0);      
 #else      
         int nwritten = write(c->context->fd,ptr,sdslen(c->obuf)-c->written);
 #endif      

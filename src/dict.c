@@ -62,7 +62,11 @@ static unsigned int dict_force_resize_ratio = 5;
 /* -------------------------- private prototypes ---------------------------- */
 
 static int _dictExpandIfNeeded(dict *ht);
+#ifdef _WIN32
+static size_t _dictNextPower(size_t size);
+#else
 static unsigned long _dictNextPower(unsigned long size);
+#endif
 static int _dictKeyIndex(dict *ht, const void *key);
 static int _dictInit(dict *ht, dictType *type, void *privDataPtr);
 
@@ -152,7 +156,37 @@ int dictResize(dict *d)
         minimal = DICT_HT_INITIAL_SIZE;
     return dictExpand(d, minimal);
 }
+#ifdef _WIN32
+/* Expand or create the hashtable */
+int dictExpand(dict *d, size_t size)
+{
+    dictht n; /* the new hashtable */
+    size_t realsize = _dictNextPower(size);
 
+    /* the size is invalid if it is smaller than the number of
+     * elements already inside the hashtable */
+    if (dictIsRehashing(d) || d->ht[0].used > size)
+        return DICT_ERR;
+
+    /* Allocate the new hashtable and initialize all pointers to NULL */
+    n.size = realsize;
+    n.sizemask = realsize-1;
+    n.table = zcalloc(realsize*sizeof(dictEntry*));
+    n.used = (size_t) 0;
+
+    /* Is this the first initialization? If so it's not really a rehashing
+     * we just set the first hash table so that it can accept keys. */
+    if (d->ht[0].table == NULL) {
+        d->ht[0] = n;
+        return DICT_OK;
+    }
+
+    /* Prepare a second hash table for incremental rehashing */
+    d->ht[1] = n;
+    d->rehashidx = 0;
+    return DICT_OK;
+}
+#else
 /* Expand or create the hashtable */
 int dictExpand(dict *d, unsigned long size)
 {
@@ -182,7 +216,7 @@ int dictExpand(dict *d, unsigned long size)
     d->rehashidx = 0;
     return DICT_OK;
 }
-
+#endif
 /* Performs N steps of incremental rehashing. Returns 1 if there are still
  * keys to move from the old to the new hash table, otherwise 0 is returned.
  * Note that a rehashing step consists in moving a bucket (that may have more
@@ -362,7 +396,11 @@ int dictDeleteNoFree(dict *ht, const void *key) {
 /* Destroy an entire dictionary */
 int _dictClear(dict *d, dictht *ht)
 {
+#ifdef _WIN32
+    size_t i;
+#else
     unsigned long i;
+#endif
 
     /* Free all the elements */
     for (i = 0; i < ht->size && ht->used > 0; i++) {
@@ -502,6 +540,7 @@ dictEntry *dictGetRandomKey(dict *d)
         he = he->next;
         listlen++;
     }
+
     listele = random() % listlen;
     he = orighe;
     while(listele--) he = he->next;
@@ -533,6 +572,25 @@ static int _dictExpandIfNeeded(dict *d)
     return DICT_OK;
 }
 
+#ifdef _WIN32
+/* Our hash table capability is a power of two */
+static size_t _dictNextPower(size_t size)
+{
+    size_t i = DICT_HT_INITIAL_SIZE;
+
+#ifdef _WIN64
+    if (size >= LONG_LONG_MAX) return LONG_LONG_MAX;
+#else
+    if (size >= LONG_MAX) return LONG_MAX;
+#endif
+
+    while(1) {
+        if (i >= size)
+            return i;
+        i *= 2;
+    }
+}
+#else
 /* Our hash table capability is a power of two */
 static unsigned long _dictNextPower(unsigned long size)
 {
@@ -545,6 +603,7 @@ static unsigned long _dictNextPower(unsigned long size)
         i *= 2;
     }
 }
+#endif
 
 /* Returns the index of a free slot that can be populated with
  * an hash entry for the given 'key'.
@@ -585,9 +644,15 @@ void dictEmpty(dict *d) {
 
 #define DICT_STATS_VECTLEN 50
 static void _dictPrintStatsHt(dictht *ht) {
+#ifdef _WIN32
+    size_t i, slots = 0, chainlen, maxchainlen = 0;
+    size_t totchainlen = 0;
+    size_t clvector[DICT_STATS_VECTLEN];
+#else
     unsigned long i, slots = 0, chainlen, maxchainlen = 0;
     unsigned long totchainlen = 0;
     unsigned long clvector[DICT_STATS_VECTLEN];
+#endif
 
     if (ht->used == 0) {
         printf("No stats available for empty dictionaries\n");
@@ -614,6 +679,20 @@ static void _dictPrintStatsHt(dictht *ht) {
         if (chainlen > maxchainlen) maxchainlen = chainlen;
         totchainlen += chainlen;
     }
+#ifdef _WIN32
+    printf("Hash table stats:\n");
+    printf(" table size: %lld\n", (long long)ht->size);
+    printf(" number of elements: %lld\n", (long long)ht->used);
+    printf(" different slots: %lld\n", (long long)slots);
+    printf(" max chain length: %lld\n", (long long)maxchainlen);
+    printf(" avg chain length (counted): %.02f\n", (float)totchainlen/slots);
+    printf(" avg chain length (computed): %.02f\n", (float)ht->used/slots);
+    printf(" Chain length distribution:\n");
+    for (i = 0; i < DICT_STATS_VECTLEN-1; i++) {
+        if (clvector[i] == 0) continue;
+        printf("   %s%ld: %ld (%.02f%%)\n",(i == DICT_STATS_VECTLEN-1)?">= ":"", i, clvector[i], ((float)clvector[i]/ht->size)*100);
+    }
+#else
     printf("Hash table stats:\n");
     printf(" table size: %ld\n", ht->size);
     printf(" number of elements: %ld\n", ht->used);
@@ -626,6 +705,7 @@ static void _dictPrintStatsHt(dictht *ht) {
         if (clvector[i] == 0) continue;
         printf("   %s%ld: %ld (%.02f%%)\n",(i == DICT_STATS_VECTLEN-1)?">= ":"", i, clvector[i], ((float)clvector[i]/ht->size)*100);
     }
+#endif
 }
 
 void dictPrintStats(dict *d) {

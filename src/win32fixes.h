@@ -11,6 +11,7 @@
   #define WIN32_LEAN_AND_MEAN
   #define NOGDI
   #define __USE_W32_SOCKETS
+  #define __MINGW_FEATURES__ 1
 
  // #define _WIN32_WINNT 0x0501
 
@@ -43,20 +44,23 @@
   #else
     #define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
     #define ftello(stream) ftello64(stream)
-    #ifdef _WIN64
-        #define MINGW_HAS_SECURE_API
-        #include <io.h>
-        #define ftruncate _chsize_s
-    #endif
   #endif
 
   #define inline __inline
 
+  #define ftruncate(a,b) replace_ftruncate(a,b)
+  int replace_ftruncate(int fd, off64_t length);
+
   #define sleep(x) Sleep((x)*1000)
 
-  #define random() (long)replace_random()
-  #define rand() replace_random()
-  int replace_random();
+  #if defined(_WIN64) || defined(_MSC_VER)
+    #define random() (long)replace_random()
+    #define rand() replace_random()
+    int replace_random();
+  #else
+    #define random() (long) abs(rand() * rand())
+    #define rand() (int) abs(rand() * rand())
+  #endif
 
   // Redis calls usleep(1) to give thread some time
   // Sleep(0) should do the same on windows

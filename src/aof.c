@@ -577,13 +577,18 @@ int rewriteAppendOnlyFileBackground(void) {
         }
     } else {
         /* Parent */
+#ifdef _WIN32
         if (childpid == -1) {
-#ifdef WIN32
             char tmpfile[256];
-            snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
+
+            childpid = (int) getpid();
+            snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", childpid);
             server.bgrewritechildpid = childpid;
             updateDictResizePolicy();
             server.appendseldb = -1;
+
+            redisLog(REDIS_NOTICE,
+                "Foreground append only file rewriting started by pid %d",childpid);
 
             if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
                 backgroundRewriteDoneHandler(0);
@@ -595,16 +600,18 @@ int rewriteAppendOnlyFileBackground(void) {
                     strerror(errno));
                 return REDIS_ERR;
             }
+        }
 #else
+        if (childpid == -1) {
             redisLog(REDIS_WARNING,
                 "Can't rewrite append only file in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
-#endif
         }
         redisLog(REDIS_NOTICE,
             "Background append only file rewriting started by pid %d",childpid);
         server.bgrewritechildpid = childpid;
+#endif
         updateDictResizePolicy();
         /* We set appendseldb to -1 in order to force the next call to the
          * feedAppendOnlyFile() to issue a SELECT command, so the differences

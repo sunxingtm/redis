@@ -39,8 +39,8 @@ INSTALL= cp -p
 OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o
 BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
-CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
-CHECKAOFOBJ = redis-check-aof.o
+CHECKDUMPOBJ = win32fixes.o redis-check-dump.o lzf_c.o lzf_d.o
+CHECKAOFOBJ = win32fixes.o redis-check-aof.o
 
 PRGNAME = redis-server
 BENCHPRGNAME = redis-benchmark

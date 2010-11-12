@@ -637,6 +637,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                     sp->changes, sp->seconds);
                 rdbSaveBackground(server.dbfilename);
 #ifdef _WIN32
+               /* On windows this will save in foreground and block */
+               /* Here we are allready saved, and we should return */
                return 100;
 #else
                break;
@@ -867,18 +869,21 @@ void initServer() {
 
     server.mainthread = pthread_self();
 #ifdef _WIN32
+     /* Force binary mode on all files */
     _fmode = _O_BINARY;
-    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdin),  _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
 
+    /* Set C locale, forcing strtod() to work with dots */
     setlocale(LC_ALL, "C");
 
+    /* Winsocks must be initialized */
     if (!w32initWinSock()) {
-        redisLog(REDIS_WARNING, "Can't init WinSock2 error code: %d", WSAGetLastError());
+        redisLog(REDIS_WARNING, "Can't init WinSock2; Error code: %d", WSAGetLastError());
         exit(1);
     };
-    /* Clear Winsocks at exit */
+    /* ... and cleaned at application exit */
     atexit((void(*)(void)) win32Cleanup);
 
     /*  Used to get length of saved object  */
@@ -887,6 +892,7 @@ void initServer() {
         redisLog(REDIS_WARNING, "Can't open NUL device: %s", server.neterr);
         exit(1);
     }
+ //   Not shure if this will speed NUL writing up
  //   setvbuf(server.devnull, NULL, _IONBF, 0 );
 #else
     /*  Used to get length of saved object  */
@@ -1277,10 +1283,12 @@ sds genRedisInfoString(void) {
 #else
         0,
 #endif
+            server.loading,
+            server.appendonly,
             server.dirty,
             (int) (server.bgsavechildpid != -1),
             (long)(time_t) server.lastsave,
-            (int) ((server.bgrewritechildpid != -1) ? 1 : 0),
+            (int) (server.bgrewritechildpid != -1),
             (long long) server.stat_numconnections,
             (long long) server.stat_numcommands,
             (long long) server.stat_expiredkeys,
@@ -1290,7 +1298,7 @@ sds genRedisInfoString(void) {
             (unsigned long long) server.hash_max_zipmap_value,
             dictSize(server.pubsub_channels),
             (unsigned int)listLength(server.pubsub_patterns),
-            (int) (server.vm_enabled != 0) ? 1 : 0,
+            (int) (server.vm_enabled != 0),
             server.masterhost == 0 ? "master" : "slave"
         #else
             uptime,
@@ -1305,7 +1313,7 @@ sds genRedisInfoString(void) {
             server.blpop_blocked_clients,
             zmalloc_used_memory(),
             hmem,
-        zmalloc_get_rss(),
+            zmalloc_get_rss(),
             zmalloc_get_fragmentation_ratio(),
 #ifdef USE_TCMALLOC
         1,

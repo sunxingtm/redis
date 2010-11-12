@@ -119,15 +119,33 @@ int replace_random() {
 #if defined(_WIN64) || defined(_MSC_VER)
     unsigned int x=0;
     RtlGenRandom(&x, sizeof(UINT_MAX));
-    return x;
+    return (int)(x >> 1);
 #else
-    return rand() * rand();
+    return (int)(rand() * rand());
 #endif
 }
 
 /* BSD sockets compatibile replacement */
 int replace_setsockopt(int socket, int level, int optname, const void *optval, socklen_t optlen) {
-    return (setsockopt)(socket, level, optname, optval, optlen);
+    return (setsockopt)((SOCKET)socket, level, optname, optval, optlen);
+}
+
+/* set size with 64bit support */
+int replace_ftruncate(int fd, off64_t length) {
+    HANDLE h = (HANDLE) _get_osfhandle (fd);
+    LARGE_INTEGER l, o;
+
+    if (h == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
+
+    l.QuadPart = length;
+
+    if (!SetFilePointerEx(h, l, &o, FILE_BEGIN)) return -1;
+    if (!SetEndOfFile(h)) return -1;
+
+    return 0;
 }
 
 /* Rename which works on Windows when file exists */
@@ -135,9 +153,11 @@ int replace_rename(const char *src, const char *dst) {
 
     if (MoveFileEx(src, dst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH))
         return 0;
-    else
+    else {
+        errno = GetLastError();
         /* On error we will return generic eroor code without GetLastError() */
-        return EIO;
+        return -1;
+    }
 }
 
 /* Noop in windows */

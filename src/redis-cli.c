@@ -42,8 +42,8 @@
 
 #ifdef _WIN32
   #include <fcntl.h>
-  #include <windows.h>
   #include <winsock2.h>
+  #include <windows.h>
   #include "win32fixes.h"
 #endif
 

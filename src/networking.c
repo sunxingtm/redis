@@ -393,7 +393,7 @@ static void acceptCommonHandler(int fd) {
 
         /* That's a best effort error message, don't check write errors */
 #ifdef _WIN32
-        if (send(c->fd,err,(int)strlen(err),0) == SOCKET_ERROR) {
+        if (send((SOCKET)c->fd,err,(int)strlen(err),0) == SOCKET_ERROR) {
         }
 #else
         if (write(c->fd,err,strlen(err)) == -1) {
@@ -557,9 +557,10 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
                 nwritten = c->bufpos - c->sentlen;
             } else {
 #ifdef _WIN32
-                nwritten = send(fd,c->buf+c->sentlen,c->bufpos-c->sentlen,0);
-                if (nwritten == -1) errno = WSAGetLastError();
-                if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+                nwritten = send((SOCKET)fd,c->buf+c->sentlen,c->bufpos-c->sentlen,0);
+                if (nwritten == -1) {
+                    errno = WSAGetLastError();
+                    if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
                         errno = EAGAIN;
                 }
 #else
@@ -591,10 +592,11 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
                 nwritten = objlen - c->sentlen;
             } else {
 #ifdef _WIN32
-            nwritten = send( fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen, 0);
-            if (nwritten == -1) errno = WSAGetLastError();
-            if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
-                errno = EAGAIN;
+            nwritten = send((SOCKET)fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen, 0);
+            if (nwritten == -1) {
+                errno = WSAGetLastError();
+                if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+                    errno = EAGAIN;
             }
 #else
             nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
@@ -929,7 +931,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(mask);
 
 #ifdef _WIN32
-    nread = recv(fd, buf, REDIS_IOBUF_LEN, 0);
+    nread = recv((SOCKET)fd, buf, REDIS_IOBUF_LEN, 0);
     if (nread < 0) {
         errno = WSAGetLastError();
         if (errno == WSAECONNRESET) {

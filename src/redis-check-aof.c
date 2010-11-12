@@ -12,8 +12,6 @@
       #define strncasecmp(x,y,l) strcmp(x,y)
       //#define strncasecmp(x,y,l) (*(x)=(y) ? 1 : 0)
     #endif
-
-   int _fmode = _O_BINARY;
 #endif
 
 #define ERROR(...) { \
@@ -130,6 +128,11 @@ int main(int argc, char **argv) {
     int fix = 0;
 #ifdef _WIN32
     int assumeyes = 0;
+  
+    _fmode = _O_BINARY;
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);   
 #endif
 
     if (argc < 2) {
