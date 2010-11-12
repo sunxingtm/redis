@@ -464,13 +464,17 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         }
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Loading DB in memory");
         emptyDb();
+        /* Before loading the DB into memory we need to delete the readable
+         * handler, otherwise it will get called recursively since
+         * rdbLoad() will call the event loop to process events from time to
+         * time for non blocking loading. */
+        aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
         if (rdbLoad(server.dbfilename) != REDIS_OK) {
             redisLog(REDIS_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
             replicationAbortSyncTransfer();
             return;
         }
         /* Final setup of the connected slave <- master link */
-        aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
         zfree(server.repl_transfer_tmpfile);
 #ifndef _WIN32
         /* Moved before rename tmp->db in windows */
