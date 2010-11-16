@@ -1175,7 +1175,7 @@ void bytesToHuman(char *s, unsigned long long n) {
 
     if (n < 1024) {
         /* Bytes */
-        sprintf(s,"%lluB",n);
+        sprintf(s,"%luB",(unsigned long)n);
         return;
     } else if (n < (1024*1024)) {
         d = (double)n/(1024);
@@ -1475,7 +1475,11 @@ void freeMemoryIfNeeded(void) {
         int j, k, freed = 0;
 
         for (j = 0; j < server.dbnum; j++) {
+#ifdef _WIN64
+            long long bestval = 0LL; /* just to prevent warning */
+#else
             long bestval = 0; /* just to prevent warning */
+#endif
             sds bestkey = NULL;
             struct dictEntry *de;
             redisDb *db = server.db+j;
@@ -1528,7 +1532,11 @@ void freeMemoryIfNeeded(void) {
             else if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
                 for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
+#ifdef _WIN64
+                    long long thisval;
+#else
                     long thisval;
+#endif
 
                     de = dictGetRandomKey(dict);
                     thiskey = dictGetEntryKey(de);

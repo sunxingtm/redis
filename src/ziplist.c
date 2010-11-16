@@ -766,11 +766,13 @@ void ziplistRepr(unsigned char *zl) {
             "} ",
 #ifdef _WIN64
             (unsigned long long)p,
+            (int)index,
+            (long) (p-zl),
 #else
             (long unsigned)p,
-#endif
             index,
             (unsigned long) (p-zl),
+#endif
             entry.headersize+entry.len,
             entry.headersize,
             entry.prevrawlen,

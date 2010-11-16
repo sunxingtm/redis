@@ -551,7 +551,11 @@ typedef struct zskiplistNode {
 
 typedef struct zskiplist {
     struct zskiplistNode *header, *tail;
+#ifdef _WIN64
     unsigned long length;
+#else
+    unsigned long long length;
+#endif
     int level;
 } zskiplist;
 
@@ -644,7 +648,11 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask);
 void sendReplyToClientWritev(aeEventLoop *el, int fd, void *privdata, int mask);
 void addReply(redisClient *c, robj *obj);
 void *addDeferredMultiBulkLength(redisClient *c);
+#ifdef _WIN64
+void setDeferredMultiBulkLength(redisClient *c, void *node, long long length);
+#else
 void setDeferredMultiBulkLength(redisClient *c, void *node, long length);
+#endif
 void addReplySds(redisClient *c, sds s);
 void processInputBuffer(redisClient *c);
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask);
@@ -681,7 +689,11 @@ void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
 void listTypeTryConversion(robj *subject, robj *value);
 void listTypePush(robj *subject, robj *value, int where);
 robj *listTypePop(robj *subject, int where);
+#ifdef _WIN64
 unsigned long listTypeLength(robj *subject);
+#else
+unsigned long long listTypeLength(robj *subject);
+#endif
 listTypeIterator *listTypeInitIterator(robj *subject, int index, unsigned char direction);
 void listTypeReleaseIterator(listTypeIterator *li);
 int listTypeNext(listTypeIterator *li, listTypeEntry *entry);
@@ -737,7 +749,11 @@ unsigned long estimateObjectIdleTime(robj *o);
 int syncWrite(int fd, char *ptr, ssize_t size, int timeout);
 int syncRead(int fd, char *ptr, ssize_t size, int timeout);
 int syncReadLine(int fd, char *ptr, ssize_t size, int timeout);
+#ifdef _WIN64
+int fwriteBulkString(FILE *fp, char *s, unsigned long long len);
+#else
 int fwriteBulkString(FILE *fp, char *s, unsigned long len);
+#endif
 int fwriteBulkDouble(FILE *fp, double d);
 int fwriteBulkLongLong(FILE *fp, long long l);
 int fwriteBulkObject(FILE *fp, robj *obj);
@@ -831,7 +847,11 @@ setTypeIterator *setTypeInitIterator(robj *subject);
 void setTypeReleaseIterator(setTypeIterator *si);
 robj *setTypeNext(setTypeIterator *si);
 robj *setTypeRandomElement(robj *subject);
+#ifdef _WIN64
+unsigned long long setTypeSize(robj *subject);
+#else
 unsigned long setTypeSize(robj *subject);
+#endif
 void setTypeConvert(robj *subject, int enc);
 
 /* Hash data type */
@@ -842,7 +862,11 @@ robj *hashTypeGet(robj *o, robj *key);
 int hashTypeExists(robj *o, robj *key);
 int hashTypeSet(robj *o, robj *key, robj *value);
 int hashTypeDelete(robj *o, robj *key);
+#ifdef _WIN64
+unsigned long long hashTypeLength(robj *o);
+#else
 unsigned long hashTypeLength(robj *o);
+#endif
 hashTypeIterator *hashTypeInitIterator(robj *subject);
 void hashTypeReleaseIterator(hashTypeIterator *hi);
 int hashTypeNext(hashTypeIterator *hi);

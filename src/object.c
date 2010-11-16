@@ -235,6 +235,7 @@ robj *tryObjectEncoding(robj *o) {
     /* Check if we can represent this string as a long integer */
 #ifdef _WIN64
     if (isStringRepresentableAsLongLong(s,&value) == REDIS_ERR) return o;
+    if (value < LLONG_MIN || ll > LLONG_MAX) return o;
 #else
     if (isStringRepresentableAsLong(s,&value) == REDIS_ERR) return o;
 #endif

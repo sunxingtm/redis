@@ -681,16 +681,16 @@ static void _dictPrintStatsHt(dictht *ht) {
     }
 #ifdef _WIN32
     printf("Hash table stats:\n");
-    printf(" table size: %lld\n", (long long)ht->size);
-    printf(" number of elements: %lld\n", (long long)ht->used);
-    printf(" different slots: %lld\n", (long long)slots);
-    printf(" max chain length: %lld\n", (long long)maxchainlen);
+    printf(" table size: %llu\n", (unsigned long long)ht->size);
+    printf(" number of elements: %llu\n", (unsigned long long)ht->used);
+    printf(" different slots: %llu\n", (unsigned long long)slots);
+    printf(" max chain length: %llu\n", (unsigned long long)maxchainlen);
     printf(" avg chain length (counted): %.02f\n", (float)totchainlen/slots);
     printf(" avg chain length (computed): %.02f\n", (float)ht->used/slots);
     printf(" Chain length distribution:\n");
     for (i = 0; i < DICT_STATS_VECTLEN-1; i++) {
         if (clvector[i] == 0) continue;
-        printf("   %s%ld: %ld (%.02f%%)\n",(i == DICT_STATS_VECTLEN-1)?">= ":"", i, clvector[i], ((float)clvector[i]/ht->size)*100);
+        printf("   %s%ld: %llu (%.02f%%)\n",(i == DICT_STATS_VECTLEN-1)?">= ":"", (long)i, (unsigned long long)clvector[i], ((float)clvector[i]/(float)ht->size)*100.00);
     }
 #else
     printf("Hash table stats:\n");

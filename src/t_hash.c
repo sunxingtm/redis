@@ -117,11 +117,19 @@ int hashTypeDelete(robj *o, robj *key) {
     return deleted;
 }
 
+#ifdef _WIN64
+/* Return the number of elements in a hash. */
+unsigned long long hashTypeLength(robj *o) {
+    return (o->encoding == REDIS_ENCODING_ZIPMAP) ?
+        zipmapLen((unsigned char*)o->ptr) : dictSize((dict*)o->ptr);
+}
+#else
 /* Return the number of elements in a hash. */
 unsigned long hashTypeLength(robj *o) {
     return (o->encoding == REDIS_ENCODING_ZIPMAP) ?
         zipmapLen((unsigned char*)o->ptr) : dictSize((dict*)o->ptr);
 }
+#endif
 
 hashTypeIterator *hashTypeInitIterator(robj *subject) {
     hashTypeIterator *hi = zmalloc(sizeof(hashTypeIterator));
@@ -352,7 +360,11 @@ void hlenCommand(redisClient *c) {
 
 void genericHgetallCommand(redisClient *c, int flags) {
     robj *o, *obj;
+#ifdef _WIN64
+    size_t count = 0;
+#else
     unsigned long count = 0;
+#endif
     hashTypeIterator *hi;
     void *replylen = NULL;
 

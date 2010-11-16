@@ -854,7 +854,11 @@ void genericZrangebyscoreCommand(redisClient *c, int reverse, int justcount) {
     zskiplistNode *ln;
     int offset = 0, limit = -1;
     int withscores = 0;
+#ifdef _WIN64
+    size_t rangelen = 0;
+#else
     unsigned long rangelen = 0;
+#endif
     void *replylen = NULL;
 
     /* Parse the range arguments. */
@@ -977,7 +981,7 @@ void genericZrangebyscoreCommand(redisClient *c, int reverse, int justcount) {
     }
 
     if (justcount) {
-        addReplyLongLong(c,(long)rangelen);
+        addReplyLongLong(c,(long long)rangelen);
     } else {
         setDeferredMultiBulkLength(c,replylen,
              withscores ? (rangelen*2) : rangelen);

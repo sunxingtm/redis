@@ -213,8 +213,8 @@ void appendCommand(redisClient *c) {
                 c->argv[2]->ptr, sdslen(c->argv[2]->ptr));
         } else {
 #ifdef _WIN64
-            o->ptr = sdscatprintf(o->ptr, "%lld",
-                (unsigned long long) c->argv[2]->ptr);
+            long long l = c->argv[2]->ptr;
+            o->ptr = sdscatprintf(o->ptr, "%llu", l);
 #else
             o->ptr = sdscatprintf(o->ptr, "%ld",
                 (unsigned long) c->argv[2]->ptr);
@@ -229,8 +229,13 @@ void appendCommand(redisClient *c) {
 
 void substrCommand(redisClient *c) {
     robj *o;
+#ifdef _WIN64
+    long long start = atoll(c->argv[2]->ptr);
+    long long end = atoll(c->argv[3]->ptr);
+#else
     long start = atoi(c->argv[2]->ptr);
     long end = atoi(c->argv[3]->ptr);
+#endif
     size_t rangelen, strlen;
     sds range;
 
@@ -241,8 +246,13 @@ void substrCommand(redisClient *c) {
     strlen = sdslen(o->ptr);
 
     /* convert negative indexes */
+#ifdef _WIN64
+    if (start < 0) start = (long long)strlen+start;
+    if (end < 0) end = (long long)strlen+end;
+#else
     if (start < 0) start = (long)strlen+start;
     if (end < 0) end = (long)strlen+end;
+#endif
     if (start < 0) start = 0;
     if (end < 0) end = 0;
 
@@ -253,7 +263,11 @@ void substrCommand(redisClient *c) {
         decrRefCount(o);
         return;
     }
+#ifdef _WIN64
+    if ((size_t)end >= strlen) end = (long long)strlen-1;
+#else
     if ((size_t)end >= strlen) end = (long)strlen-1;
+#endif
     rangelen = (end-start)+1;
 
     /* Return the result */

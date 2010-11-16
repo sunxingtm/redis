@@ -582,13 +582,13 @@ int rewriteAppendOnlyFileBackground(void) {
             char tmpfile[256];
 
             childpid = (int) getpid();
-            snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", childpid);
+            snprintf(tmpfile,256,"temp-rewriteaof-bg-%lld.aof", (long long)childpid);
             server.bgrewritechildpid = childpid;
             updateDictResizePolicy();
             server.appendseldb = -1;
 
             redisLog(REDIS_NOTICE,
-                "Foreground append only file rewriting started by pid %d",childpid);
+                "Foreground append only file rewriting started by pid %lld",(long long)childpid);
 
             if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
                 backgroundRewriteDoneHandler(0);

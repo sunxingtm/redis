@@ -137,6 +137,17 @@ robj *setTypeRandomElement(robj *subject) {
     return ret;
 }
 
+#ifdef _WIN64
+unsigned long long setTypeSize(robj *subject) {
+    if (subject->encoding == REDIS_ENCODING_HT) {
+        return dictSize((dict*)subject->ptr);
+    } else if (subject->encoding == REDIS_ENCODING_INTSET) {
+        return intsetLen((intset*)subject->ptr);
+    } else {
+        redisPanic("Unknown set encoding");
+    }
+}
+#else
 unsigned long setTypeSize(robj *subject) {
     if (subject->encoding == REDIS_ENCODING_HT) {
         return dictSize((dict*)subject->ptr);
@@ -146,6 +157,7 @@ unsigned long setTypeSize(robj *subject) {
         redisPanic("Unknown set encoding");
     }
 }
+#endif
 
 /* Convert the set to specified encoding. The resulting dict (when converting
  * to a hashtable) is presized to hold the number of elements in the original
@@ -325,7 +337,11 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
     setTypeIterator *si;
     robj *ele, *dstset = NULL;
     void *replylen = NULL;
+#ifdef _WIN64
+    size_t j, cardinality = 0;
+#else
     unsigned long j, cardinality = 0;
+#endif
 
     for (j = 0; j < setnum; j++) {
         robj *setobj = dstkey ?
