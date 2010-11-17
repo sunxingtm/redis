@@ -17,11 +17,11 @@
 #define ERROR(...) { \
     char __buf[1024]; \
     sprintf(__buf, __VA_ARGS__); \
-    sprintf(error, "0x%08lx: %s", epos, __buf); \
+    sprintf(error, "0x%08llx: %s", (unsigned long long)epos, __buf); \
 }
 
 static char error[1024];
-static long epos;
+static size_t epos;
 
 int consumeNewline(char *buf) {
     if (strncmp(buf,"\r\n",2) != 0) {
@@ -80,8 +80,8 @@ int readArgc(FILE *fp, long *target) {
     return readLong(fp,'*',target);
 }
 
-long process(FILE *fp) {
-    long argc, pos = 0;
+size_t process(FILE *fp) {
+    ssize_t argc, pos = 0;
     int i, multi = 0;
     char *str;
 
@@ -128,11 +128,11 @@ int main(int argc, char **argv) {
     int fix = 0;
 #ifdef _WIN32
     int assumeyes = 0;
-  
+
     _fmode = _O_BINARY;
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
-    _setmode(_fileno(stderr), _O_BINARY);   
+    _setmode(_fileno(stderr), _O_BINARY);
 #endif
 
     if (argc < 2) {
@@ -189,14 +189,14 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    long size = sb.st_size;
+    size_t size = sb.st_size;
     if (size == 0) {
         printf("Empty file: %s\n", filename);
         exit(1);
     }
 
-    long pos = process(fp);
-    long diff = size-pos;
+    size_t pos = process(fp);
+    size_t diff = size-pos;
     if (diff > 0) {
         if (fix) {
 #ifdef _WIN32

@@ -676,24 +676,37 @@ void backgroundRewriteDoneHandler(int statloc) {
         redisLog(REDIS_NOTICE,"Parent diff flushed into the new append log file with success (%lu bytes)",sdslen(server.bgrewritebuf));
         /* Now our work is to rename the temp file into the stable file. And
          * switch the file descriptor used by the server for append only. */
+#ifdef _WIN32
+        /* Close files before renaming */
+        close(fd);
+        if (server.appendfd != -1) close(server.appendfd);
+#endif
         if (rename(tmpfile,server.appendfilename) == -1) {
             redisLog(REDIS_WARNING,"Can't rename the temp append only file into the stable one: %s", strerror(errno));
+#ifndef _WIN32
             close(fd);
+#endif
             goto cleanup;
         }
         /* Mission completed... almost */
         redisLog(REDIS_NOTICE,"Append only file successfully rewritten.");
         if (server.appendfd != -1) {
             /* If append only is actually enabled... */
+#ifdef _WIN32
+            fd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
+#else
             close(server.appendfd);
+#endif
             server.appendfd = fd;
             if (server.appendfsync != APPENDFSYNC_NO) aof_fsync(fd);
             server.appendseldb = -1; /* Make sure it will issue SELECT */
             redisLog(REDIS_NOTICE,"The new append only file was selected for future appends.");
+#ifndef _WIN32
         } else {
             /* If append only is disabled we just generate a dump in this
              * format. Why not? */
             close(fd);
+#endif
         }
     } else if (!bysignal && exitcode != 0) {
         redisLog(REDIS_WARNING, "Background append only file rewriting error");

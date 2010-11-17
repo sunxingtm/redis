@@ -349,19 +349,19 @@ int rdbSaveObject(FILE *fp, robj *o) {
  * the rdbSaveObject() function. Currently we use a trick to get
  * this length with very little changes to the code. In the future
  * we could switch to a faster solution. */
-off_t rdbSavedObjectLen(robj *o, FILE *fp) {
+off rdbSavedObjectLen(robj *o, FILE *fp) {
     if (fp == NULL) fp = server.devnull;
     rewind(fp);
     redisAssert(rdbSaveObject(fp,o) != -1);
 #ifdef _WIN32
     fflush(fp);
 #endif
-    return (off_t) ftello(fp);
+    return (off) ftello(fp);
 }
 
 /* Return the number of pages required to save this object in the swap file */
-off_t rdbSavedObjectPages(robj *o, FILE *fp) {
-    off_t bytes = rdbSavedObjectLen(o,fp);
+off rdbSavedObjectPages(robj *o, FILE *fp) {
+    off bytes = rdbSavedObjectLen(o,fp);
 
     return (bytes+(server.vm_page_size-1))/server.vm_page_size;
 }
@@ -848,7 +848,7 @@ void startLoading(FILE *fp) {
 }
 
 /* Refresh the loading progress info */
-void loadingProgress(off_t pos) {
+void loadingProgress(off pos) {
     server.loading_loaded_bytes = pos;
 }
 

@@ -46,7 +46,7 @@ vmpointer *createVmPointer(int vtype) {
 }
 
 void vmInit(void) {
-    off_t totsize;
+    off totsize;
     int pipefds[2];
     size_t stacksize;
 #ifndef _WIN32
@@ -162,16 +162,16 @@ void vmInit(void) {
 }
 
 /* Mark the page as used */
-void vmMarkPageUsed(off_t page) {
-    off_t byte = page/8;
+void vmMarkPageUsed(off page) {
+    off byte = page/8;
     int bit = page&7;
     redisAssert(vmFreePage(page) == 1);
     server.vm_bitmap[byte] |= 1<<bit;
 }
 
 /* Mark N contiguous pages as used, with 'page' being the first. */
-void vmMarkPagesUsed(off_t page, off_t count) {
-    off_t j;
+void vmMarkPagesUsed(off page, off count) {
+    off j;
 
     for (j = 0; j < count; j++)
         vmMarkPageUsed(page+j);
@@ -181,16 +181,16 @@ void vmMarkPagesUsed(off_t page, off_t count) {
 }
 
 /* Mark the page as free */
-void vmMarkPageFree(off_t page) {
-    off_t byte = page/8;
+void vmMarkPageFree(off page) {
+    off byte = page/8;
     int bit = page&7;
     redisAssert(vmFreePage(page) == 0);
     server.vm_bitmap[byte] &= ~(1<<bit);
 }
 
 /* Mark N contiguous pages as free, with 'page' being the first. */
-void vmMarkPagesFree(off_t page, off_t count) {
-    off_t j;
+void vmMarkPagesFree(off page, off count) {
+    off j;
 
     for (j = 0; j < count; j++)
         vmMarkPageFree(page+j);
@@ -200,8 +200,8 @@ void vmMarkPagesFree(off_t page, off_t count) {
 }
 
 /* Test if the page is free */
-int vmFreePage(off_t page) {
-    off_t byte = page/8;
+int vmFreePage(off page) {
+    off byte = page/8;
     int bit = page&7;
     return (server.vm_bitmap[byte] & (1<<bit)) == 0;
 }
@@ -225,8 +225,8 @@ int vmFreePage(off_t page) {
  * note: I implemented this function just after watching an episode of
  * Battlestar Galactica, where the hybrid was continuing to say "JUMP!"
  */
-int vmFindContiguousPages(off_t *first, off_t n) {
-    off_t base, offset = 0, since_jump = 0, numfree = 0;
+int vmFindContiguousPages(off *first, off n) {
+    off base, offset = 0, since_jump = 0, numfree = 0;
 
     if (server.vm_near_pages == REDIS_VM_MAX_NEAR_PAGES) {
         server.vm_near_pages = 0;
@@ -236,7 +236,7 @@ int vmFindContiguousPages(off_t *first, off_t n) {
     base = server.vm_next_page;
 
     while(offset < server.vm_pages) {
-        off_t this = base+offset;
+        off this = base+offset;
 
         /* If we overflow, restart from page zero */
         if (this >= server.vm_pages) {
@@ -280,7 +280,7 @@ int vmFindContiguousPages(off_t *first, off_t n) {
 }
 
 /* Write the specified object at the specified page of the swap file */
-int vmWriteObjectOnSwap(robj *o, off_t page) {
+int vmWriteObjectOnSwap(robj *o, off page) {
     if (server.vm_enabled) pthread_mutex_lock(&server.io_swapfile_mutex);
     if (fseeko(server.vm_fp,page*server.vm_page_size,SEEK_SET) == -1) {
         if (server.vm_enabled) pthread_mutex_unlock(&server.io_swapfile_mutex);
@@ -312,8 +312,8 @@ int vmWriteObjectOnSwap(robj *o, off_t page) {
  * If we can't find enough contiguous empty pages to swap the object on disk
  * NULL is returned. */
 vmpointer *vmSwapObjectBlocking(robj *val) {
-    off_t pages = rdbSavedObjectPages(val,NULL);
-    off_t page;
+    off pages = rdbSavedObjectPages(val,NULL);
+    off page;
     vmpointer *vp;
 
     redisAssert(val->storage == REDIS_VM_MEMORY);
@@ -334,7 +334,7 @@ vmpointer *vmSwapObjectBlocking(robj *val) {
     return vp;
 }
 
-robj *vmReadObjectFromSwap(off_t page, int type) {
+robj *vmReadObjectFromSwap(off page, int type) {
     robj *o;
 
     if (server.vm_enabled) pthread_mutex_lock(&server.io_swapfile_mutex);

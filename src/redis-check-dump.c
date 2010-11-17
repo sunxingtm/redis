@@ -19,7 +19,7 @@
 
 /* File maping used in redis-check-dump */
 /* mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0); */
-void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset) {
+void *mmap(void *start, size_t length, int prot, int flags, int fd, off offset) {
 	HANDLE h;
 	void *data;
 
@@ -580,7 +580,7 @@ void printErrorStack(entry *e) {
     /* display error stack */
     for (i = 0; i < errors.level; i++) {
 #ifdef _WIN32
-        printf("0x%08lx - %s\n", (long unsigned int)errors.offset[i], errors.error[i]);      
+        printf("0x%08llx - %s\n", (unsigned long long)errors.offset[i], errors.error[i]);      
 #else      
         printf("0x%08lx - %s\n", errors.offset[i], errors.error[i]);
 #endif      
@@ -670,7 +670,7 @@ int main(int argc, char **argv) {
     }
 
     int fd;
-    off_t size;
+    off size;
     struct stat stat;
     void *data;
 

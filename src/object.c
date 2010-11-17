@@ -38,17 +38,19 @@ robj *createStringObjectFromLongLong(long long value) {
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
     } else {
+#ifdef _WIN64
+        o = createObject(REDIS_STRING, NULL);
+        o->encoding = REDIS_ENCODING_INT;
+        o->ptr = (void*)((long long)value);
+#else
         if (value >= LONG_MIN && value <= LONG_MAX) {
             o = createObject(REDIS_STRING, NULL);
             o->encoding = REDIS_ENCODING_INT;
-#ifdef _WIN64
-            o->ptr = (void*)((long long)value);
-#else
             o->ptr = (void*)((long)value);
-#endif
         } else {
             o = createObject(REDIS_STRING,sdsfromlonglong(value));
         }
+#endif
     }
     return o;
 }
@@ -235,7 +237,7 @@ robj *tryObjectEncoding(robj *o) {
     /* Check if we can represent this string as a long integer */
 #ifdef _WIN64
     if (isStringRepresentableAsLongLong(s,&value) == REDIS_ERR) return o;
-    if (value < LLONG_MIN || ll > LLONG_MAX) return o;
+    if (value < LONG_MIN || value > LONG_MAX) return o;
 #else
     if (isStringRepresentableAsLong(s,&value) == REDIS_ERR) return o;
 #endif

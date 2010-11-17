@@ -15,6 +15,7 @@
 
  // #define _WIN32_WINNT 0x0501
 
+  #include "fmacros.h"
   #include <stdlib.h>
   #include <stdio.h>
   #include <io.h>
@@ -249,7 +250,7 @@ struct sigaction {
  // int inet_aton(const char *cp_arg, struct in_addr *addr)
 
   /* redis-check-dump  */
-  void *mmap(void *start, size_t length, int prot, int flags, int fd, off_t offset);
+  void *mmap(void *start, size_t length, int prot, int flags, int fd, off offset);
   int munmap(void *start, size_t length);
 
   int fork(void);

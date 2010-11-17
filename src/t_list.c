@@ -76,6 +76,17 @@ robj *listTypePop(robj *subject, int where) {
     return value;
 }
 
+#ifdef _WIN64
+unsigned long long listTypeLength(robj *subject) {
+    if (subject->encoding == REDIS_ENCODING_ZIPLIST) {
+        return (unsigned long long) ziplistLen(subject->ptr);
+    } else if (subject->encoding == REDIS_ENCODING_LINKEDLIST) {
+        return (unsigned long long) listLength((list*)subject->ptr);
+    } else {
+        redisPanic("Unknown list encoding");
+    }
+}
+#else
 unsigned long listTypeLength(robj *subject) {
     if (subject->encoding == REDIS_ENCODING_ZIPLIST) {
         return ziplistLen(subject->ptr);
@@ -85,6 +96,7 @@ unsigned long listTypeLength(robj *subject) {
         redisPanic("Unknown list encoding");
     }
 }
+#endif
 
 /* Initialize an iterator at the specified index. */
 listTypeIterator *listTypeInitIterator(robj *subject, int index, unsigned char direction) {

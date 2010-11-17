@@ -213,8 +213,8 @@ void appendCommand(redisClient *c) {
                 c->argv[2]->ptr, sdslen(c->argv[2]->ptr));
         } else {
 #ifdef _WIN64
-            long long l = c->argv[2]->ptr;
-            o->ptr = sdscatprintf(o->ptr, "%llu", l);
+            o->ptr = sdscatprintf(o->ptr, "%llu",
+                (unsigned long long )c->argv[2]->ptr);
 #else
             o->ptr = sdscatprintf(o->ptr, "%ld",
                 (unsigned long) c->argv[2]->ptr);

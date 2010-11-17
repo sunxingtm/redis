@@ -268,8 +268,8 @@ typedef struct vmPointer {
     unsigned storage:2; /* REDIS_VM_SWAPPED or REDIS_VM_LOADING */
     unsigned notused:26;
     unsigned int vtype; /* type of the object stored in the swap file */
-    off_t page;         /* the page at witch the object is stored on disk */
-    off_t usedpages;    /* number of pages used on disk */
+    off page;         /* the page at witch the object is stored on disk */
+    off usedpages;    /* number of pages used on disk */
 } vmpointer;
 
 /* Macro used to initalize a Redis object allocated on the stack.
@@ -326,7 +326,7 @@ typedef struct redisClient {
     int replstate;          /* replication state if this is a slave */
     int repldbfd;           /* replication DB file descriptor */
     long repldboff;         /* replication DB file offset */
-    off_t repldbsize;       /* replication DB file size */
+    off repldbsize;       /* replication DB file size */
     multiState mstate;      /* MULTI/EXEC state */
     robj **blocking_keys;   /* The key we are waiting to terminate a blocking
                              * operation such as BLPOP. Otherwise NULL. */
@@ -376,8 +376,8 @@ struct redisServer {
     dict *commands;             /* Command table hahs table */
     /* RDB / AOF loading information */
     int loading;
-    off_t loading_total_bytes;
-    off_t loading_loaded_bytes;
+    off loading_total_bytes;
+    off loading_loaded_bytes;
     time_t loading_start_time;
     /* Fast pointers to often looked up command */
     struct redisCommand *delCommand, *multiCommand;
@@ -427,7 +427,7 @@ struct redisServer {
     int masterport;
     redisClient *master;    /* client that is master for this slave */
     int replstate;          /* replication status if the instance is a slave */
-    off_t repl_transfer_left;  /* bytes left reading .rdb  */
+    off repl_transfer_left;  /* bytes left reading .rdb  */
     int repl_transfer_s;    /* slave -> master SYNC socket */
     int repl_transfer_fd;   /* slave -> master SYNC temp file descriptor */
     char *repl_transfer_tmpfile; /* slave-> master SYNC temp file name */
@@ -449,8 +449,8 @@ struct redisServer {
     /* Virtual memory configuration */
     int vm_enabled;
     char *vm_swap_file;
-    off_t vm_page_size;
-    off_t vm_pages;
+    off vm_page_size;
+    off vm_pages;
     unsigned long long vm_max_memory;
     /* Zip structure config */
     size_t hash_max_zipmap_entries;
@@ -461,8 +461,8 @@ struct redisServer {
     /* Virtual memory state */
     FILE *vm_fp;
     int vm_fd;
-    off_t vm_next_page; /* Next probably empty page */
-    off_t vm_near_pages; /* Number of pages allocated sequentially */
+    off vm_next_page; /* Next probably empty page */
+    off vm_near_pages; /* Number of pages allocated sequentially */
     unsigned char *vm_bitmap; /* Bitmap of free/used pages */
     time_t unixtime;    /* Unix time sampled every second. */
     /* Virtual memory I/O threads stuff */
@@ -577,8 +577,8 @@ typedef struct iojob {
                    vmpointer objct for REDIS_IOREQ_LOAD. */
     robj *val;  /* the value to swap for REDIS_IOREQ_*_SWAP, otherwise this
                  * field is populated by the I/O thread for REDIS_IOREQ_LOAD. */
-    off_t page; /* Swap page where to read/write the object */
-    off_t pages; /* Swap pages needed to save object. PREPARE_SWAP return val */
+    off page; /* Swap page where to read/write the object */
+    off pages; /* Swap pages needed to save object. PREPARE_SWAP return val */
     int canceled; /* True if this command was canceled by blocking side of VM */
     pthread_t thread; /* ID of the thread processing this entry */
 } iojob;
@@ -690,9 +690,9 @@ void listTypeTryConversion(robj *subject, robj *value);
 void listTypePush(robj *subject, robj *value, int where);
 robj *listTypePop(robj *subject, int where);
 #ifdef _WIN64
-unsigned long listTypeLength(robj *subject);
-#else
 unsigned long long listTypeLength(robj *subject);
+#else
+unsigned long listTypeLength(robj *subject);
 #endif
 listTypeIterator *listTypeInitIterator(robj *subject, int index, unsigned char direction);
 void listTypeReleaseIterator(listTypeIterator *li);
@@ -767,7 +767,7 @@ void replicationCron(void);
 
 /* Generic persistence functions */
 void startLoading(FILE *fp);
-void loadingProgress(off_t pos);
+void loadingProgress(off pos);
 void stopLoading(void);
 
 /* RDB persistence */
@@ -776,8 +776,8 @@ int rdbSaveBackground(char *filename);
 void rdbRemoveTempFile(pid_t childpid);
 int rdbSave(char *filename);
 int rdbSaveObject(FILE *fp, robj *o);
-off_t rdbSavedObjectPages(robj *o, FILE *fp);
-off_t rdbSavedObjectLen(robj *o, FILE *fp);
+off rdbSavedObjectPages(robj *o, FILE *fp);
+off rdbSavedObjectLen(robj *o, FILE *fp);
 robj *rdbLoadObject(int type, FILE *fp);
 void backgroundSaveDoneHandler(int statloc);
 
@@ -813,7 +813,7 @@ void populateCommandTable(void);
 
 /* Virtual Memory */
 void vmInit(void);
-void vmMarkPagesFree(off_t page, off_t count);
+void vmMarkPagesFree(off page, off count);
 robj *vmLoadObject(robj *o);
 robj *vmPreviewObject(robj *o);
 int vmSwapOneObjectBlocking(void);
@@ -826,11 +826,11 @@ void unlockThreadedIO(void);
 int vmSwapObjectThreaded(robj *key, robj *val, redisDb *db);
 void freeIOJob(iojob *j);
 void queueIOJob(iojob *j);
-int vmWriteObjectOnSwap(robj *o, off_t page);
-robj *vmReadObjectFromSwap(off_t page, int type);
+int vmWriteObjectOnSwap(robj *o, off page);
+robj *vmReadObjectFromSwap(off page, int type);
 void waitEmptyIOJobsQueue(void);
 void vmReopenSwapFile(void);
-int vmFreePage(off_t page);
+int vmFreePage(off page);
 void zunionInterBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
 void execBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
 int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd);

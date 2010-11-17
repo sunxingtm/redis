@@ -1396,7 +1396,7 @@ sds genRedisInfoString(void) {
     if (server.loading) {
         double perc;
         time_t eta, elapsed;
-        off_t remaining_bytes = server.loading_total_bytes-
+        off remaining_bytes = server.loading_total_bytes-
                                 server.loading_loaded_bytes;
 
         perc = ((double)server.loading_loaded_bytes /
