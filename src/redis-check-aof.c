@@ -21,7 +21,7 @@
 }
 
 static char error[1024];
-static size_t epos;
+static ssize_t epos;
 
 int consumeNewline(char *buf) {
     if (strncmp(buf,"\r\n",2) != 0) {
@@ -31,7 +31,7 @@ int consumeNewline(char *buf) {
     return 1;
 }
 
-int readLong(FILE *fp, char prefix, long *target) {
+int readLong(FILE *fp, char prefix, ssize_t *target) {
     char buf[128], *eptr;
     epos = ftell(fp);
     if (fgets(buf,sizeof(buf),fp) == NULL) {
@@ -45,19 +45,23 @@ int readLong(FILE *fp, char prefix, long *target) {
     return consumeNewline(eptr);
 }
 
-int readBytes(FILE *fp, char *target, long length) {
+int readBytes(FILE *fp, char *target, ssize_t length) {
     long real;
     epos = ftell(fp);
     real = fread(target,1,length,fp);
     if (real != length) {
+#ifdef _WIN32
+        ERROR("Expected to read %lld bytes, got %lld bytes",(__int64)length,(__int64)real);
+#else
         ERROR("Expected to read %ld bytes, got %ld bytes",length,real);
+#endif
         return 0;
     }
     return 1;
 }
 
 int readString(FILE *fp, char** target) {
-    long len;
+    ssize_t len;
     *target = NULL;
     if (!readLong(fp,'$',&len)) {
         return 0;
@@ -76,11 +80,11 @@ int readString(FILE *fp, char** target) {
     return 1;
 }
 
-int readArgc(FILE *fp, long *target) {
+int readArgc(FILE *fp, ssize_t *target) {
     return readLong(fp,'*',target);
 }
 
-size_t process(FILE *fp) {
+ssize_t process(FILE *fp) {
     ssize_t argc, pos = 0;
     int i, multi = 0;
     char *str;
@@ -189,14 +193,14 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    size_t size = sb.st_size;
-    if (size == 0) {
+    ssize_t size = sb.st_size;
+    if (size == (ssize_t)0) {
         printf("Empty file: %s\n", filename);
         exit(1);
     }
 
-    size_t pos = process(fp);
-    size_t diff = size-pos;
+    ssize_t pos = process(fp);
+    ssize_t diff = size-pos;
     if (diff > 0) {
         if (fix) {
 #ifdef _WIN32
@@ -204,7 +208,11 @@ int main(int argc, char **argv) {
         if (!assumeyes) {
 #endif
             char buf[2];
+#ifdef _WIN32
+            printf("This will shrink the AOF from %lld bytes, with %lld bytes, to %lld bytes\n",(__int64)size,(__int64)diff,(__int64)pos);
+#else
             printf("This will shrink the AOF from %ld bytes, with %ld bytes, to %ld bytes\n",size,diff,pos);
+#endif
             printf("Continue? [y/N]: ");
             if (fgets(buf,sizeof(buf),stdin) == NULL ||
                 strncasecmp(buf,"y",1) != 0) {
@@ -213,13 +221,27 @@ int main(int argc, char **argv) {
             }
 #ifdef _WIN32
         }
-#endif
-            if (ftruncate(fileno(fp), pos) == -1) {
+            LARGE_INTEGER l;
+            HANDLE h = (HANDLE) _get_osfhandle(fileno(fp));
+            l.QuadPart = pos;
+
+            fflush(fp);
+
+            if (!SetFilePointerEx(h, l, &l, FILE_BEGIN) || !SetEndOfFile(h)) {
                 printf("Failed to truncate AOF\n");
                 exit(1);
             } else {
                 printf("Successfully truncated AOF\n");
             }
+#else
+
+        if (ftruncate(fileno(fp), pos) == -1) {
+            printf("Failed to truncate AOF\n");
+            exit(1);
+        } else {
+            printf("Successfully truncated AOF\n");
+        }
+#endif
         } else {
             printf("AOF is not valid\n");
             exit(1);

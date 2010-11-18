@@ -56,7 +56,7 @@
 void __redisSetError(redisContext *c, int type, sds err);
 
 #ifdef _WIN32
-static SOCKET redisCreateSocket(redisContext *c, int type) {
+static int redisCreateSocket(redisContext *c, int type) {
     SOCKET s;
     int on=1;
 
@@ -77,7 +77,7 @@ static SOCKET redisCreateSocket(redisContext *c, int type) {
             return REDIS_ERR;
         }
     }
-    return s;
+    return (int)s;
 }
 #else
 static int redisCreateSocket(redisContext *c, int type) {
@@ -98,11 +98,11 @@ static int redisCreateSocket(redisContext *c, int type) {
 #endif
 
 #ifdef _WIN32
-static int redisSetNonBlock(redisContext *c, SOCKET fd) {
+static int redisSetNonBlock(redisContext *c, int fd) {
   // If iMode = 0, blocking is enabled;
   // If iMode != 0, non-blocking mode is enabled.
   u_long iMode = 1;
-  if (ioctlsocket(fd, FIONBIO, &iMode) == SOCKET_ERROR) {
+  if (ioctlsocket((SOCKET)fd, FIONBIO, &iMode) == SOCKET_ERROR) {
     errno = WSAGetLastError();
     __redisSetError(c,REDIS_ERR_IO,
             sdscatprintf(sdsempty(), "ioctlsocket(FIONBIO): %d\n", errno));
@@ -136,9 +136,9 @@ static int redisSetNonBlock(redisContext *c, int fd) {
 #endif
 
 #ifdef _WIN32
-static int redisSetTcpNoDelay(redisContext *c, SOCKET fd) {
+static int redisSetTcpNoDelay(redisContext *c, int fd) {
     int yes = 1;
-    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&yes, sizeof(yes)) == -1) {
+    if (setsockopt((SOCKET)fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&yes, sizeof(yes)) == -1) {
         __redisSetError(c,REDIS_ERR_IO,
             sdscatprintf(sdsempty(), "setsockopt(TCP_NODELAY): %s", strerror(errno)));
         return REDIS_ERR;
@@ -158,11 +158,7 @@ static int redisSetTcpNoDelay(redisContext *c, int fd) {
 #endif
 
 int redisContextConnectTcp(redisContext *c, const char *addr, int port) {
-#ifdef _WIN32
-    SOCKET s;
-#else
     int s;
-#endif
     int blocking = (c->flags & REDIS_BLOCK);
     struct sockaddr_in sa;
 
@@ -206,10 +202,13 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port) {
         memcpy(&sa.sin_addr, he->h_addr, sizeof(struct in_addr));
     }
 #endif
-    if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
+
 #ifdef _WIN32
+    if (connect((SOCKET)s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
         errno = WSAGetLastError();
         if ((errno == WSAEINVAL) || (errno == WSAEWOULDBLOCK)) errno = EINPROGRESS;
+#else
+    if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
 #endif
         if (errno == EINPROGRESS && !blocking) {
             /* This is ok. */

@@ -102,11 +102,7 @@ struct redisContext; /* need forward declaration of redisContext */
 
 /* Context for a connection to Redis */
 typedef struct redisContext {
-#ifdef _WIN32
-    SOCKET fd;
-#else
     int fd;
-#endif
     int flags;
     char *obuf; /* Write buffer */
     int err; /* Error flags, 0 when there is no error */

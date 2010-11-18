@@ -764,7 +764,7 @@ static void __redisCreateReplyReader(redisContext *c) {
 int redisBufferRead(redisContext *c) {
     char buf[2048];
 #ifdef _WIN32
-    int nread = recv(c->fd,buf,sizeof(buf),0);
+    int nread = recv((SOCKET)c->fd,buf,sizeof(buf),0);
     if (nread == -1) {
         errno = WSAGetLastError();
         if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
@@ -804,7 +804,7 @@ int redisBufferWrite(redisContext *c, int *done) {
     int nwritten;
     if (sdslen(c->obuf) > 0) {
 #ifdef _WIN32
-        nwritten = send(c->fd,c->obuf,sdslen(c->obuf),0);
+        nwritten = send((SOCKET)c->fd,c->obuf,sdslen(c->obuf),0);
         if (nwritten == -1) {
             errno = WSAGetLastError();
             if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
