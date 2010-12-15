@@ -493,7 +493,6 @@ struct redisServer {
     dict *pubsub_channels; /* Map channels to list of subscribed clients */
     list *pubsub_patterns; /* A list of pubsub_patterns */
     /* Misc */
-    FILE *devnull;
     unsigned lruclock:22;        /* clock incrementing every minute, for LRU */
     unsigned lruclock_padding:10;
 };
@@ -776,8 +775,8 @@ int rdbSaveBackground(char *filename);
 void rdbRemoveTempFile(pid_t childpid);
 int rdbSave(char *filename);
 int rdbSaveObject(FILE *fp, robj *o);
-off rdbSavedObjectPages(robj *o, FILE *fp);
-off rdbSavedObjectLen(robj *o, FILE *fp);
+off rdbSavedObjectLen(robj *o);
+off rdbSavedObjectPages(robj *o);
 robj *rdbLoadObject(int type, FILE *fp);
 void backgroundSaveDoneHandler(int statloc);
 

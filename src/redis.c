@@ -896,11 +896,6 @@ void initServer() {
  //   setvbuf(server.devnull, NULL, _IONBF, 0 );
 #else
     /*  Used to get length of saved object  */
-    server.devnull = fopen("/dev/null","w");
-    if (server.devnull == NULL) {
-        redisLog(REDIS_WARNING, "Can't open /dev/null: %s", server.neterr);
-        exit(1);
-    }
 #endif
     server.clients = listCreate();
     server.slaves = listCreate();
