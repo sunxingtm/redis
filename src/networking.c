@@ -71,8 +71,10 @@ redisClient *createClient(int fd) {
     c->reply = listCreate();
     listSetFreeMethod(c->reply,decrRefCount);
     listSetDupMethod(c->reply,dupClientReplyValue);
-    c->blocking_keys = NULL;
-    c->blocking_keys_num = 0;
+    c->bpop.keys = NULL;
+    c->bpop.count = 0;
+    c->bpop.timeout = 0;
+    c->bpop.target = NULL;
     c->io_keys = listCreate();
     c->watched_keys = listCreate();
     listSetFreeMethod(c->io_keys,decrRefCount);
@@ -208,6 +210,9 @@ void addReply(redisClient *c, robj *obj) {
         if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != REDIS_OK)
             _addReplyObjectToList(c,obj);
     } else {
+        /* FIXME: convert the long into string and use _addReplyToBuffer()
+         * instead of calling getDecodedObject. As this place in the
+         * code is too performance critical. */
         obj = getDecodedObject(obj);
         if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != REDIS_OK)
             _addReplyObjectToList(c,obj);
@@ -329,6 +334,7 @@ void setDeferredMultiBulkLength(redisClient *c, void *node, long length) {
 }
 #endif
 
+/* Add a duble as a bulk reply */
 void addReplyDouble(redisClient *c, double d) {
     char dbuf[128], sbuf[128];
     int dlen, slen;
@@ -337,6 +343,8 @@ void addReplyDouble(redisClient *c, double d) {
     addReplyString(c,sbuf,slen);
 }
 
+/* Add a long long as integer reply or bulk len / multi bulk count.
+ * Basically this is used to output <prefix><long long><crlf>. */
 void _addReplyLongLong(redisClient *c, long long ll, char prefix) {
     char buf[128];
     int len;
@@ -355,6 +363,7 @@ void addReplyMultiBulkLen(redisClient *c, long length) {
     _addReplyLongLong(c,length,'*');
 }
 
+/* Create the length prefix of a bulk reply, example: $2234 */
 void addReplyBulkLen(redisClient *c, robj *obj) {
     size_t len;
 
@@ -380,21 +389,36 @@ void addReplyBulkLen(redisClient *c, robj *obj) {
     _addReplyLongLong(c,len,'$');
 }
 
+/* Add a Redis Object as a bulk reply */
 void addReplyBulk(redisClient *c, robj *obj) {
     addReplyBulkLen(c,obj);
     addReply(c,obj);
     addReply(c,shared.crlf);
 }
 
-/* In the CONFIG command we need to add vanilla C string as bulk replies */
+/* Add a C buffer as bulk reply */
+void addReplyBulkCBuffer(redisClient *c, void *p, size_t len) {
+    _addReplyLongLong(c,len,'$');
+    addReplyString(c,p,len);
+    addReply(c,shared.crlf);
+}
+
+/* Add a C nul term string as bulk reply */
 void addReplyBulkCString(redisClient *c, char *s) {
     if (s == NULL) {
         addReply(c,shared.nullbulk);
     } else {
-        robj *o = createStringObject(s,strlen(s));
-        addReplyBulk(c,o);
-        decrRefCount(o);
+        addReplyBulkCBuffer(c,s,strlen(s));
     }
+}
+
+/* Add a long long as a bulk reply */
+void addReplyBulkLongLong(redisClient *c, long long ll) {
+    char buf[64];
+    int len;
+
+    len = ll2string(buf,64,ll);
+    addReplyBulkCBuffer(c,buf,len);
 }
 
 static void acceptCommonHandler(int fd) {
@@ -769,7 +793,7 @@ void closeTimedoutClients(void) {
             redisLog(REDIS_VERBOSE,"Closing idle client");
             freeClient(c);
         } else if (c->flags & REDIS_BLOCKED) {
-            if (c->blockingto != 0 && c->blockingto < now) {
+            if (c->bpop.timeout != 0 && c->bpop.timeout < now) {
                 addReply(c,shared.nullmultibulk);
                 unblockClientWaitingData(c);
             }
@@ -872,7 +896,7 @@ int processMultibulkBuffer(redisClient *c) {
                 bulklen = strtol(c->querybuf+pos+1,&eptr,10);
                 tolerr = (eptr[0] != '\r');
                 if (tolerr || bulklen == LONG_MIN || bulklen == LONG_MAX ||
-                    bulklen < 0 || bulklen > 1024*1024*1024)
+                    bulklen < 0 || bulklen > 512*1024*1024)
                 {
                     addReplyError(c,"Protocol error: invalid bulk length");
                     setProtocolError(c,pos);
