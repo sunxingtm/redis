@@ -204,8 +204,9 @@ struct redisCommand readonlyCommandTable[] = {
 
 /*============================ Utility functions ============================ */
 void redisLog(int level, const char *fmt, ...) {
-#ifndef _WIN32    
+#ifndef _WIN32
     const int syslogLevelMap[] = { LOG_DEBUG, LOG_INFO, LOG_NOTICE, LOG_WARNING };
+#endif
     const char *c = ".-*#";
     time_t now = time(NULL);
     va_list ap;
@@ -227,9 +228,9 @@ void redisLog(int level, const char *fmt, ...) {
     fflush(fp);
 
     if (server.logfile) fclose(fp);
-
+#ifndef _WIN32
     if (server.syslog_enabled) syslog(syslogLevelMap[level], "%s", msg);
-#endif    
+#endif
 }
 
 /* Redis generally does not try to recover from out of memory conditions
@@ -895,7 +896,7 @@ void initServer() {
     signal(SIGPIPE, SIG_IGN);
     setupSigSegvAction();
 
-#ifndef _WIN32    
+#ifndef _WIN32
     if (server.syslog_enabled) {
         openlog(server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,
             server.syslog_facility);
@@ -912,6 +913,9 @@ void initServer() {
 
     /* Set C locale, forcing strtod() to work with dots */
     setlocale(LC_ALL, "C");
+
+    HMODULE lib = LoadLibraryA("advapi32.dll");
+    RtlGenRandom = (RtlGenRandomFunc)GetProcAddress(lib, "SystemFunction036");
 
     /* Winsocks must be initialized */
     if (!w32initWinSock()) {
@@ -968,6 +972,7 @@ void initServer() {
     server.stat_numcommands = 0;
     server.stat_numconnections = 0;
     server.stat_expiredkeys = 0;
+    server.stat_evictedkeys = 0;
     server.stat_starttime = time(NULL);
     server.stat_keyspace_misses = 0;
     server.stat_keyspace_hits = 0;
@@ -1260,6 +1265,7 @@ sds genRedisInfoString(void) {
         "total_connections_received:%lld\r\n"
         "total_commands_processed:%lld\r\n"
         "expired_keys:%lld\r\n"
+        "evicted_keys:%lld\r\n"
         "keyspace_hits:%lld\r\n"
         "keyspace_misses:%lld\r\n"
 #ifdef _WIN32
@@ -1293,7 +1299,7 @@ sds genRedisInfoString(void) {
             (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-            server.blpop_blocked_clients,
+            server.bpop_blocked_clients,
             (unsigned long long) zmalloc_used_memory(),
             hmem,
             (unsigned long long)zmalloc_get_rss(),
@@ -1305,18 +1311,19 @@ sds genRedisInfoString(void) {
 #endif
             server.loading,
             server.appendonly,
-            server.dirty,
+            (long long) server.dirty,
             (int) (server.bgsavechildpid != -1),
             (long)(time_t) server.lastsave,
             (int) (server.bgrewritechildpid != -1),
             (long long) server.stat_numconnections,
             (long long) server.stat_numcommands,
             (long long) server.stat_expiredkeys,
+            (long long) server.stat_evictedkeys,
             (long long) server.stat_keyspace_hits,
             (long long) server.stat_keyspace_misses,
             (unsigned long long) server.hash_max_zipmap_entries,
             (unsigned long long) server.hash_max_zipmap_value,
-            dictSize(server.pubsub_channels),
+            (long) dictSize(server.pubsub_channels),
             (unsigned int)listLength(server.pubsub_patterns),
             (int) (server.vm_enabled != 0),
             server.masterhost == 0 ? "master" : "slave"
@@ -1349,6 +1356,7 @@ sds genRedisInfoString(void) {
             server.stat_numconnections,
             server.stat_numcommands,
             server.stat_expiredkeys,
+            server.stat_evictedkeys,
             server.stat_keyspace_hits,
             server.stat_keyspace_misses,
             server.hash_max_zipmap_entries,
@@ -1579,40 +1587,9 @@ void freeMemoryIfNeeded(void) {
             if (bestkey) {
                 robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
                 dbDelete(db,keyobj);
-                server.stat_expiredkeys++;
+                server.stat_evictedkeys++;
                 decrRefCount(keyobj);
                 freed++;
-            }
-        }
-        if (!freed) return; /* nothing to free... */
-    }
-
-    while(0) {
-        int j, k, freed = 0;
-        for (j = 0; j < server.dbnum; j++) {
-            int minttl = -1;
-            sds minkey = NULL;
-            robj *keyobj = NULL;
-            struct dictEntry *de;
-
-            if (dictSize(server.db[j].expires)) {
-                freed = 1;
-                /* From a sample of three keys drop the one nearest to
-                 * the natural expire */
-                for (k = 0; k < 3; k++) {
-                    time_t t;
-
-                    de = dictGetRandomKey(server.db[j].expires);
-                    t = (time_t) dictGetEntryVal(de);
-                    if (minttl == -1 || t < minttl) {
-                        minkey = dictGetEntryKey(de);
-                        minttl = (int) t;
-                    }
-                }
-                keyobj = createStringObject(minkey,sdslen(minkey));
-                dbDelete(server.db+j,keyobj);
-                server.stat_expiredkeys++;
-                decrRefCount(keyobj);
             }
         }
         if (!freed) return; /* nothing to free... */
@@ -1647,7 +1624,7 @@ void createPidFile(void) {
     /* Try to write the pid file in a best-effort way. */
     FILE *fp = fopen(server.pidfile,"w");
     if (fp) {
-        fprintf(fp,"%d\n",getpid());
+        fprintf(fp,"%d\n",(int)getpid());
         fclose(fp);
     }
 }

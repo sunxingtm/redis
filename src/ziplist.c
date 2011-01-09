@@ -123,6 +123,7 @@ static unsigned int zipEntryEncoding(unsigned char *p) {
         return p[0] & 0xf0;
     }
     assert(NULL);
+    return 0;
 }
 
 /* Return bytes needed to store integer encoded by 'encoding' */
@@ -133,14 +134,14 @@ static unsigned int zipIntSize(unsigned char encoding) {
     case ZIP_INT_64B: return sizeof(int64_t);
     }
     assert(NULL);
-    return 0; // makes compiler happy
+    return 0;
 }
 
 /* Decode the encoded length pointed by 'p'. If a pointer to 'lensize' is
  * provided, it is set to the number of bytes required to encode the length. */
 static unsigned int zipDecodeLength(unsigned char *p, unsigned int *lensize) {
     unsigned char encoding = zipEntryEncoding(p);
-    unsigned int len;
+    unsigned int len = 0;
 
     if (ZIP_IS_STR(encoding)) {
         switch(encoding) {
@@ -305,7 +306,7 @@ static void zipSaveInteger(unsigned char *p, int64_t value, unsigned char encodi
 static int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
     int16_t i16;
     int32_t i32;
-    int64_t i64, ret;
+    int64_t i64, ret = 0;
     if (encoding == ZIP_INT_16B) {
         memcpy(&i16,p,sizeof(i16));
         ret = i16;

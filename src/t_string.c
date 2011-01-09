@@ -1,4 +1,3 @@
-#include <limits.h>
 #include "redis.h"
 #ifdef _WIN32
    #include <stdio.h>
@@ -349,14 +348,19 @@ void msetnxCommand(redisClient *c) {
 }
 
 void incrDecrCommand(redisClient *c, long long incr) {
-    long long value;
+    long long value, oldvalue;
     robj *o;
 
     o = lookupKeyWrite(c->db,c->argv[1]);
     if (o != NULL && checkType(c,o,REDIS_STRING)) return;
     if (getLongLongFromObjectOrReply(c,o,&value,NULL) != REDIS_OK) return;
 
+    oldvalue = value;
     value += incr;
+    if ((incr < 0 && value > oldvalue) || (incr > 0 && value < oldvalue)) {
+        addReplyError(c,"increment or decrement would overflow");
+        return;
+    }
     o = createStringObjectFromLongLong(value);
     dbReplace(c->db,c->argv[1],o);
     touchWatchedKey(c->db,c->argv[1]);
