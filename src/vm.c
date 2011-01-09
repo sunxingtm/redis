@@ -887,7 +887,7 @@ void *IOThreadEntryPoint(void *arg) {
         j->thread = pthread_self();
         listAddNodeTail(server.io_processing,j);
         ln = listLast(server.io_processing); /* We use ln later to remove it */
-
+        unlockThreadedIO();
         redisLog(REDIS_DEBUG,"Thread %ld got a new job (type %d): %p about key '%s'",
             (long) pthread_self(), j->type, (void*)j, (char*)j->key->ptr);
 
