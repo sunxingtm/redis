@@ -783,7 +783,7 @@ void ziplistRepr(unsigned char *zl) {
             entry.headersize,
             entry.prevrawlen,
             entry.prevrawlensize,
-            entry.len);
+            (unsigned int)entry.len);
         p += entry.headersize;
         if (ZIP_IS_STR(entry.encoding)) {
             if (entry.len > 40) {

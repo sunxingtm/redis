@@ -402,7 +402,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
  * the rdbSaveObject() function. Currently we use a trick to get
  * this length with very little changes to the code. In the future
  * we could switch to a faster solution. */
-off_t rdbSavedObjectLen(robj *o) {
+off rdbSavedObjectLen(robj *o) {
     int len = rdbSaveObject(NULL,o);
     redisAssert(len != -1);
     return (off) len;

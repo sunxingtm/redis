@@ -459,7 +459,12 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
                  * a much faster path. */
                 if (eleobj->encoding == REDIS_ENCODING_INT &&
                     sets[j]->encoding == REDIS_ENCODING_INTSET &&
+#ifdef _WIN64
+                    !intsetFind((intset*)sets[j]->ptr,(long long)eleobj->ptr))
+#else
                     !intsetFind((intset*)sets[j]->ptr,(long)eleobj->ptr))
+#endif
+
                 {
                     break;
                 /* else... object to object check is easy as we use the
