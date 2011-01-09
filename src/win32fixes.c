@@ -121,7 +121,11 @@ int replace_random() {
     RtlGenRandom(&x, sizeof(UINT_MAX));
     return (int)(x >> 1);
 #else
-    return (int)(rand() * rand());
+    unsigned int x=0;
+    RtlGenRandom(&x, sizeof(UINT_MAX));
+    return (int)(x >> 1);
+
+    //return (int)(rand() * rand());
 #endif
 }
 

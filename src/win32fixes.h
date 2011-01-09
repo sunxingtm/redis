@@ -59,8 +59,18 @@
     #define rand() replace_random()
     int replace_random();
   #else
-    #define random() (long) abs(rand() * rand())
-    #define rand() (int) abs(rand() * rand())
+    #ifndef __RTL_GENRANDOM
+    #define __RTL_GENRANDOM 1
+        typedef BOOLEAN (_stdcall* RtlGenRandomFunc)(void * RandomBuffer, ULONG RandomBufferLength);
+    #endif
+    RtlGenRandomFunc RtlGenRandom;
+
+    #define random() (long)replace_random()
+    #define rand() replace_random()
+    int replace_random();
+
+    //#define random() (long) abs(rand() * rand())
+    //#define rand() (int) abs(rand() * rand())
   #endif
 
   // Redis calls usleep(1) to give thread some time
