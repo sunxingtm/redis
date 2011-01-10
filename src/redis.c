@@ -914,8 +914,11 @@ void initServer() {
     /* Set C locale, forcing strtod() to work with dots */
     setlocale(LC_ALL, "C");
 
+#ifndef _WIN64
+    /* MingGW 32 lacks declaration of RtlGenRandom, MinGw64 don't */
     HMODULE lib = LoadLibraryA("advapi32.dll");
     RtlGenRandom = (RtlGenRandomFunc)GetProcAddress(lib, "SystemFunction036");
+#endif
 
     /* Winsocks must be initialized */
     if (!w32initWinSock()) {
