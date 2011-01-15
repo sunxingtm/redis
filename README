@@ -1,3 +1,34 @@
+About this fork
+---------------
+
+This fork lets you run Redis server as a Windows service.
+
+It introduces the redis-service.exe binary; this is a Windows service that
+simply starts and stops the redis-server.exe binary.
+
+It expects to find redis-server.exe and redis.conf files in the same
+directory as redis-service.exe.
+
+To start, install, uninstall or stop run (as Administrator) one of the
+following commands:
+
+   net start Redis
+   sc create Redis binPath= %CD%\redis-service.exe
+   sc delete Redis
+   net stop Redis
+
+NB: By default, the service will run as the Local System account, which
+    has to many privileges; you should create a custom Windows account
+    to run this service.
+
+This is a work in progress. See the planned features inside the 
+src/service.c file.
+
+Let me known how this works for you!
+
+  -- Rui Lopes
+
+
 Windows 32 and x64 port of Redis server, client and utils
 --------------------------------------------
 
