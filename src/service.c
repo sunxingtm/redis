@@ -29,7 +29,6 @@
  */
 
 /*
- * TODO create WiX installer
  * TODO interpret the "rename-command SHUTDOWN" configuration stanza
  * TODO use tcmalloc
  * TODO support redis auth command when connecting to redis
