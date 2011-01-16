@@ -4,8 +4,6 @@
 ;         will write the log file under current directory, but after its running,
 ;         it will write it inside the "dir" setted subdirectory).
 ; TODO modify the installed redis.conf file to save the database and logs under the "data" subdirectory.
-; TODO get AppVersion from the version info resource embedded in the redis-service.exe file.
-;      see the ISPPExample1.iss file bundled with Inno Setup.
 ; TODO do not override destiny redis.conf file. instead create a redis.conf.dist
 ;      with our version, and only override the original if it wasn't modified.
 ; TODO show a blurb after the install to alert the user to create a dedicated
@@ -15,11 +13,13 @@
 ; TODO display a redis logo on the left of the setup dialog boxes.
 ; TODO strip the binaries?
 
+#define AppVersion GetFileVersion(AddBackslash(SourcePath) + "..\src\redis-service.exe")
+
 [Setup]
-AppId={{B882ADC5-9DA9-4729-899A-F6728C146D40}
+AppID={{B882ADC5-9DA9-4729-899A-F6728C146D40}
 AppName=Redis
-AppVersion=2.1.8
-;AppVerName=Redis 2.1.8
+AppVersion={#AppVersion}
+;AppVerName=Redis {#AppVersion}
 AppPublisher=rgl
 AppPublisherURL=https://github.com/rgl/redis
 AppSupportURL=https://github.com/rgl/redis

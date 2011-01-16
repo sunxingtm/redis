@@ -31,12 +31,14 @@ ifeq ($(USE_TCMALLOC),yes)
 endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
+WINDRES?= windres
+
 PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
 INSTALL= cp -p
 
 OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o
-SRVOBJ = win32fixes.o service.o zmalloc.o
+SRVOBJ = win32fixes.o service.o service-res.o zmalloc.o
 BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
 CHECKDUMPOBJ = win32fixes.o redis-check-dump.o lzf_c.o lzf_d.o
@@ -98,6 +100,7 @@ replication.o: replication.c redis.h fmacros.h config.h ae.h sds.h dict.h \
 sds.o: sds.c sds.h zmalloc.h
 sha1.o: sha1.c sha1.h
 service.o: service.c
+service-res.o: service.rc version.h release.h
 sort.o: sort.c redis.h fmacros.h config.h ae.h sds.h dict.h adlist.h \
   zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h pqsort.h
 syncio.o: syncio.c
@@ -131,6 +134,9 @@ redis-service: dependencies $(SRVOBJ)
 
 service.o:
 	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) service.c
+
+service-res.o: service.rc
+	$(WINDRES) service.rc $@
 
 redis-benchmark: dependencies $(BENCHOBJ)
 	cd ../deps/hiredis && $(MAKE) static
