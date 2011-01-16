@@ -29,14 +29,14 @@
  */
 
 /*
- * TODO get g_logLevel, g_redisHost and g_redisPort from the redis conf file
- * TODO base g_fileLogPath in the logfile stanza of the redis conf file (snuck "-service" in it)
  * TODO create WiX installer
+ * TODO interpret the "rename-command SHUTDOWN" configuration stanza
  * TODO use tcmalloc
  * TODO support redis auth command when connecting to redis
  * TODO periodically ping redis to check it health (maybe this is not really needed; time will tell!)
  */
 
+#define REDIS_CONFIG_LINE_MAX 1024
 #define _WIN32_WINNT 0x0501
 #include <windows.h>
 #include <winsock2.h>
@@ -44,6 +44,7 @@
 #include "win32fixes.h"
 #include "hiredis.h"
 #include "sds.h"
+#include "zmalloc.h"
 
 // yes, we are using global (module) variables! they are quite
 // appropriate for this little service.
@@ -60,6 +61,9 @@ static SERVICE_STATUS_HANDLE g_serviceSatusHandle;
 static HANDLE g_redisProcess;
 static HANDLE g_stopEvent;
 
+static int initialize(int argc, char** argv);
+static int loadConfiguration(const char* fileName);
+static void setFileLogPathFromRedisLogFilePath(const char* redisLogFilePath);
 static void changeCurrentDirectoryToProcessImageDirectory(void);
 static void serviceMain(int argc, char** argv);
 static void serviceControlHandler(DWORD request);
@@ -87,17 +91,11 @@ static int fileLog(int level, const char* format, ...);
 
 
 int main(int argc, char** argv) {
-    g_logLevel = LOG_LEVEL_DEBUG;
-    g_fileLogPath = "redis-service.log";
-    g_selfPath = argv[0];
-    g_serviceName = argc > 1 ? argv[1] : "Redis";
-    g_redisConfPath = argc > 2 ? argv[2] : "redis.conf";
-    g_redisHost = "127.0.0.1";
-    g_redisPort = 6379;
+    if (initialize(argc, argv)) {
+        return -1;
+    }
 
     LOG_DEBUG("Begin");
-
-    changeCurrentDirectoryToProcessImageDirectory();
 
     SERVICE_TABLE_ENTRY serviceTable[2];
 
@@ -139,6 +137,99 @@ int main(int argc, char** argv) {
 }
 
 
+static int initialize(int argc, char** argv) {
+    g_logLevel = LOG_LEVEL_DEBUG;
+    g_fileLogPath = "redis-service.log";
+    g_selfPath = argv[0];
+    g_serviceName = argc > 1 ? argv[1] : "redis";
+    g_redisConfPath = argc > 2 ? argv[2] : "redis.conf";
+    g_redisHost = "127.0.0.1";
+    g_redisPort = 6379;
+
+    changeCurrentDirectoryToProcessImageDirectory();
+
+    return loadConfiguration(g_redisConfPath);
+}
+
+
+static int loadConfiguration(const char* fileName) {
+    FILE *f = fopen(fileName, "r");
+
+    if (f == NULL) {
+        fprintf(stderr, "Failed to open the redis configuration file %s\n", fileName);
+        return -1;
+    }
+
+    char lineBuffer[REDIS_CONFIG_LINE_MAX + 1];
+
+    for (int lineNumber = 1; fgets(lineBuffer, REDIS_CONFIG_LINE_MAX + 1, f); ++lineNumber) {
+        sds line = sdstrim(sdsnew(lineBuffer), " \t\r\n");
+
+        if (line[0] == '#' || line[0] == '\0') {
+            sdsfree(line);
+            continue;
+        }
+
+        int argc;
+        sds* argv = sdssplitargs(line, &argc);
+
+        sds name = argv[0];
+        sdstolower(name);
+
+        if (!strcmp(name, "port") && argc == 2) {
+            g_redisPort = atoi(argv[1]);
+        }
+        else if (!strcmp(name, "bind") && argc == 2) {
+            // NB currently, no one is freeing g_redisHost, but this is only
+            //    set at initialization time, so don't bother for now...
+            g_redisHost = zstrdup(argv[1]);
+        }
+        else if (!strcmp(name, "dir") && argc == 2) {
+            chdir(argv[1]);
+        }
+        else if (!strcmp(name, "loglevel") && argc == 2) {
+            if      (!strcasecmp(argv[1], "debug"))     g_logLevel = LOG_LEVEL_DEBUG;
+            else if (!strcasecmp(argv[1], "verbose"))   g_logLevel = LOG_LEVEL_INFO;
+            else if (!strcasecmp(argv[1], "notice"))    g_logLevel = LOG_LEVEL_NOTICE;
+            else                                        g_logLevel = LOG_LEVEL_WARN;
+        }
+        else if (!strcmp(name, "logfile") && argc == 2) {
+            setFileLogPathFromRedisLogFilePath(argv[1]);
+        }
+        else if (!strcmp(name, "include") && argc == 2) {
+            loadConfiguration(argv[1]);
+        }
+
+        for (int n = 0; n < argc; ++n) {
+            sdsfree(argv[n]);
+        }
+        zfree(argv);
+        sdsfree(line);
+    }
+
+    fclose(f);
+    return 0;
+}
+
+
+static void setFileLogPathFromRedisLogFilePath(const char* redisLogFilePath) {
+    char drive[_MAX_DRIVE];
+    char dir[_MAX_DIR];
+    char fname[_MAX_FNAME];
+    char ext[_MAX_EXT];
+
+    _splitpath(redisLogFilePath, drive, dir, fname, ext);
+
+    sds path = sdscatprintf(sdsempty(), "%s%s%s-service%s", drive, dir, fname, ext);
+
+    // NB currently, no one is freeing g_fileLogPath, but this is only
+    //    set at initialization time, so don't bother for now...
+    g_fileLogPath = zstrdup(path);
+
+    sdsfree(path);
+}
+
+
 static void changeCurrentDirectoryToProcessImageDirectory(void) {
     char drive[_MAX_DRIVE];
     char dir[_MAX_DIR];
@@ -149,10 +240,10 @@ static void changeCurrentDirectoryToProcessImageDirectory(void) {
 
     sds directory = sdscat(sdsnew(drive), dir);
 
-    SetCurrentDirectory(directory);
-    
-    LOG_DEBUG("Changing current directory to %s", directory);
-
+    if (chdir(directory)) {
+        fprintf(stderr, "Failed to change current directory to %s\n", directory);
+    }
+ 
     sdsfree(directory);
 }
 
