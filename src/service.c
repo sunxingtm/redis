@@ -51,7 +51,7 @@
 
 static int g_logLevel;
 static char* g_fileLogPath;
-static char* g_selfPath;
+static char* g_binDirectoryPath;
 static char* g_redisConfPath;
 static char* g_redisHost;
 static int g_redisPort;
@@ -64,7 +64,7 @@ static HANDLE g_stopEvent;
 static int initialize(int argc, char** argv);
 static int loadConfiguration(const char* fileName);
 static void setFileLogPathFromRedisLogFilePath(const char* redisLogFilePath);
-static void changeCurrentDirectoryToProcessImageDirectory(void);
+static int setBinDirectoryPath(const char* selfPath);
 static void serviceMain(int argc, char** argv);
 static void serviceControlHandler(DWORD request);
 static int registerServiceControlHandler(void);
@@ -140,15 +140,21 @@ int main(int argc, char** argv) {
 static int initialize(int argc, char** argv) {
     g_logLevel = LOG_LEVEL_DEBUG;
     g_fileLogPath = "redis-service.log";
-    g_selfPath = argv[0];
     g_serviceName = argc > 1 ? argv[1] : "redis";
     g_redisConfPath = argc > 2 ? argv[2] : "redis.conf";
     g_redisHost = "127.0.0.1";
     g_redisPort = 6379;
 
-    changeCurrentDirectoryToProcessImageDirectory();
+    if (setBinDirectoryPath(argv[0]))
+        return -1;
 
-    return loadConfiguration(g_redisConfPath);
+    int result = loadConfiguration(g_redisConfPath);
+
+    // loadConfiguration might change the working directory (because we
+    // want compat with how redis handles "dir" and "include" directives),
+    // but we don't want that behaviour on this service, so revert to the
+    // binary directory (set by setBinDirectoryPath).
+    return chdir(g_binDirectoryPath) < 0 ? -1 : result;
 }
 
 
@@ -230,21 +236,29 @@ static void setFileLogPathFromRedisLogFilePath(const char* redisLogFilePath) {
 }
 
 
-static void changeCurrentDirectoryToProcessImageDirectory(void) {
+static int setBinDirectoryPath(const char* selfPath) {
     char drive[_MAX_DRIVE];
     char dir[_MAX_DIR];
     char fname[_MAX_FNAME];
     char ext[_MAX_EXT];
 
-    _splitpath(g_selfPath, drive, dir, fname, ext);
+    _splitpath(selfPath, drive, dir, fname, ext);
 
     sds directory = sdscat(sdsnew(drive), dir);
 
     if (chdir(directory)) {
         fprintf(stderr, "Failed to change current directory to %s\n", directory);
+        sdsfree(directory);
+        return -1;
     }
+
+    // NB currently, no one is freeing g_fileLogPath, but this is only
+    //    set at initialization time, so don't bother for now...
+    g_binDirectoryPath = zstrdup(directory);
  
     sdsfree(directory);
+
+    return 0;
 }
 
 
