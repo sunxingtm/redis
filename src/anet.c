@@ -386,7 +386,8 @@ int anetWrite(int fd, char *buf, int count)
 
 #ifdef _WIN32
 static int anetListen(char *err, int s, struct sockaddr *sa, socklen_t len) {
-    if (bind((SOCKET)s,sa,len) == SOCKET_ERROR) {
+    int r = bind((SOCKET)s,sa,len);
+    if (r == SOCKET_ERROR) {
         errno = WSAGetLastError();
         anetSetError(err, "bind error: %d\n", errno);
         closesocket((SOCKET)s);
@@ -404,10 +405,27 @@ static int anetListen(char *err, int s, struct sockaddr *sa, socklen_t len) {
 int anetTcpServer(char *err, int port, char *bindaddr)
 {
     int s;
+    int y = 1;
+    int n = 0;
+
     struct sockaddr_in sa;
 
     if ((s = anetCreateSocket(err,AF_INET)) == ANET_ERR)
         return ANET_ERR;
+
+    /* Override for SO_REUSEADDR for windows server socks */
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n)) == SOCKET_ERROR) {
+        errno = WSAGetLastError();
+        anetSetError(err, "setsockopt SO_REUSEADDR: %d\n", errno);
+        return ANET_ERR;
+    }
+
+    if (setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                   (char *) &y, sizeof(y)) == SOCKET_ERROR) {
+        errno = WSAGetLastError();
+        anetSetError(err, "setsockopt SO_EXCLUSIVEADDRUSE: %d\n", errno);
+        return ANET_ERR;
+    }
 
     memset(&sa,0,sizeof(sa));
     sa.sin_family = AF_INET;
