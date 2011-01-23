@@ -32,6 +32,9 @@ endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
 WINDRES?= windres
+ifneq ($(DEBUG),)
+WINDRESOPT+= -D DEBUG
+endif
 
 PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
@@ -136,7 +139,7 @@ service.o:
 	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) service.c
 
 service-res.o: service.rc
-	$(WINDRES) service.rc $@
+	$(WINDRES) $(WINDRESOPT) service.rc $@
 
 redis-benchmark: dependencies $(BENCHOBJ)
 	cd ../deps/hiredis && $(MAKE) static
