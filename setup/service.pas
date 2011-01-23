@@ -52,22 +52,22 @@ const
   SERVICE_PAUSED              = $7;
 
 function OpenSCManager(lpMachineName, lpDatabaseName: string; dwDesiredAccess: cardinal): HANDLE;
-external 'OpenSCManagerA@advapi32.dll stdcall';
+external 'OpenSCManagerW@advapi32.dll stdcall';
 
 function OpenService(hSCManager: HANDLE; lpServiceName: string; dwDesiredAccess: cardinal): HANDLE;
-external 'OpenServiceA@advapi32.dll stdcall';
+external 'OpenServiceW@advapi32.dll stdcall';
 
 function CloseServiceHandle(hSCObject: HANDLE): boolean;
 external 'CloseServiceHandle@advapi32.dll stdcall';
 
 function CreateService(hSCManager: HANDLE; lpServiceName, lpDisplayName: string; dwDesiredAccess, dwServiceType, dwStartType, dwErrorControl: cardinal; lpBinaryPathName, lpLoadOrderGroup: string; lpdwTagId: cardinal; lpDependencies, lpServiceStartName, lpPassword: string): cardinal;
-external 'CreateServiceA@advapi32.dll stdcall';
+external 'CreateServiceW@advapi32.dll stdcall';
 
 function DeleteService(hService: HANDLE): boolean;
 external 'DeleteService@advapi32.dll stdcall';
 
 function StartNTService(hService: HANDLE; dwNumServiceArgs: cardinal; lpServiceArgVectors: cardinal): boolean;
-external 'StartServiceA@advapi32.dll stdcall';
+external 'StartServiceW@advapi32.dll stdcall';
 
 function ControlService(hService: HANDLE; dwControl: cardinal; var ServiceStatus: SERVICE_STATUS): boolean;
 external 'ControlService@advapi32.dll stdcall';
