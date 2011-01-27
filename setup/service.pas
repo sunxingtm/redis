@@ -3,7 +3,7 @@
 
 // function IsServiceInstalled(ServiceName: string): boolean;
 // function IsServiceRunning(ServiceName: string): boolean;
-// function InstallService(FileName, ServiceName, DisplayName, Description: string; ServiceType, StartType: cardinal): boolean;
+// function InstallService(FileName, ServiceName, DisplayName, Description: string; ServiceType, StartType: cardinal; AccountName, AccountPassword: string): boolean;
 // function RemoveService(ServiceName: string): boolean;
 // function StartService(ServiceName: string): boolean;
 // function StopService(ServiceName: string): boolean;
@@ -115,16 +115,19 @@ begin
   end
 end;
 
-function InstallService(FileName, ServiceName, DisplayName, Description: string; ServiceType, StartType: cardinal): boolean;
+function InstallService(FileName, ServiceName, DisplayName, Description: string; ServiceType, StartType: cardinal; AccountName, AccountPassword: string): boolean;
 var
   hSCM    : HANDLE;
   hService: HANDLE;
+  ServiceStartName: string;
 begin
   hSCM := OpenServiceManager();
   Result := false;
   if hSCM <> 0 then
   begin
-    hService := CreateService(hSCM, ServiceName, DisplayName, SERVICE_ALL_ACCESS, ServiceType, StartType, 0, FileName, '', 0, '', '', '');
+    if AccountName <> '' then
+      ServiceStartName := '.\' + AccountName;
+    hService := CreateService(hSCM, ServiceName, DisplayName, SERVICE_ALL_ACCESS, ServiceType, StartType, 0, FileName, '', 0, '', ServiceStartName, AccountPassword);
     if hService <> 0 then
     begin
       Result := true;

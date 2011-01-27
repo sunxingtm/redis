@@ -54,7 +54,7 @@ CLIPRGNAME = redis-cli
 CHECKDUMPPRGNAME = redis-check-dump
 CHECKAOFPRGNAME = redis-check-aof
 
-all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server redis-service
+all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server redis-service service-setup-helper.dll
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -141,6 +141,9 @@ service.o:
 service-res.o: service.rc
 	$(WINDRES) $(WINDRESOPT) service.rc $@
 
+service-setup-helper.dll: service-setup-helper.c
+	$(CC) -o $@ -shared $(CFLAGS) $(DEBUG) -Wl,--kill-at $< -lnetapi32
+
 redis-benchmark: dependencies $(BENCHOBJ)
 	cd ../deps/hiredis && $(MAKE) static
 	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(LIBS)
@@ -164,7 +167,7 @@ redis-check-aof: $(CHECKAOFOBJ)
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf $(PRGNAME) $(SRVPRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe
+	rm -rf $(PRGNAME) $(SRVPRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe *.dll
 
 dep:
 	$(CC) -MM *.c

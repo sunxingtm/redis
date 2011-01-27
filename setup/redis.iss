@@ -1,9 +1,18 @@
+; TODO grant the RedisService account full-permission to the data and logs
+;      directories.
+; TODO after uninstall, setup-helper.dll is left behind... figure out why its
+;      not being automatically deleted.
 ; TODO show a blurb after the install to alert the user to create a dedicated
 ;      windows account to run redis, change the "data" directory permissions
 ;      and modify the service startup type to automatic (maybe this should be
 ;      done automatically?).
 ; TODO display a redis logo on the left of the setup dialog boxes.
-; TODO strip the binaries?
+; TODO create start menu entry for redis-cli.exe? for redis doc url too?
+; TODO strip the binaries? its enough to build with make DEBUG=''
+; TODO sign the setup?
+;      NB: Unizeto Certum has free certificates to open-source authors.
+;      See http://www.certum.eu/certum/cert,offer_software_publisher.xml
+;      See https://developer.mozilla.org/en/Signing_a_XPI
 
 #define AppVersion GetFileVersion(AddBackslash(SourcePath) + "..\src\redis-service.exe")
 
@@ -23,7 +32,7 @@ InfoBeforeFile=..\README
 OutputDir=.
 OutputBaseFilename=redis-setup
 SetupIconFile=redis.ico
-Compression=lzma
+Compression=lzma2/max
 SolidCompression=yes
 
 [Languages]
@@ -34,23 +43,30 @@ Name: "{app}\data";
 Name: "{app}\logs";
 
 [Files]
+Source: "..\src\service-setup-helper.dll"; DestDir: "{app}"; DestName: "setup-helper.dll"
 Source: "..\src\redis-benchmark.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-check-aof.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-check-dump.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-server.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-service.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\redis.conf"; DestDir: "{app}"; DestName: "redis-dist.conf"; BeforeInstall: BeforeInstallConf; AfterInstall: AfterInstallConf; 
+Source: "..\redis.conf"; DestDir: "{app}"; DestName: "redis-dist.conf"; BeforeInstall: BeforeInstallConf; AfterInstall: AfterInstallConf;
 Source: "..\README"; DestDir: "{app}"; DestName: "README.txt"
 Source: "..\COPYING"; DestDir: "{app}"; DestName: "COPYING.txt"
 
 [Code]
 #include "service.pas"
+#include "service-account.pas"
 
 const
+  SERVICE_ACCOUNT_NAME = 'RedisService';
+  SERVICE_ACCOUNT_DESCRIPTION = 'Redis Server Service';
   SERVICE_NAME = 'redis';
   SERVICE_DISPLAY_NAME = 'Redis Server';
   SERVICE_DESCRIPTION = 'Persistent key-value database';
+
+const
+  LM20_PWLEN = 14;
 
 var
   ConfDistFilePath: string;
@@ -66,6 +82,16 @@ function ToForwardSlashes(S: string): string;
 begin
   Result := S;
   StringChangeEx(Result, '\', '/', True);
+end;
+
+function GeneratePassword: string;
+var
+  N: integer;
+begin
+  for N := 1 to LM20_PWLEN do
+  begin
+    Result := Result + Chr(33 + Random(255 - 33));
+  end;
 end;
 
 function InitializeSetup(): boolean;
@@ -93,16 +119,30 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ServicePath: string;
+  Password: string;
+  Status: integer;
 begin
   case CurStep of
     ssPostInstall:
       begin
+        if ServiceAccountExists(SERVICE_ACCOUNT_NAME) <> 0 then
+        begin
+          Password := GeneratePassword;
+
+          Status := CreateServiceAccount(SERVICE_ACCOUNT_NAME, Password, SERVICE_ACCOUNT_DESCRIPTION);
+
+          if Status <> 0 then
+          begin
+            MsgBox('Failed to create service account for ' + SERVICE_ACCOUNT_NAME + ' (#' + IntToStr(Status) + ')' #13#13 'You need to create it manually.', mbError, MB_OK);
+          end;
+        end;
+
         if IsServiceInstalled(SERVICE_NAME) then
           Exit;
 
         ServicePath := ExpandConstant('{app}\redis-service.exe');
 
-        if not InstallService(ServicePath, SERVICE_NAME, SERVICE_DISPLAY_NAME, SERVICE_DESCRIPTION, SERVICE_WIN32_OWN_PROCESS, SERVICE_DEMAND_START) then
+        if not InstallService(ServicePath, SERVICE_NAME, SERVICE_DISPLAY_NAME, SERVICE_DESCRIPTION, SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START, SERVICE_ACCOUNT_NAME, Password) then
         begin
           MsgBox('Failed to install the ' + SERVICE_NAME + ' service.' #13#13 'You need to install it manually.', mbError, MB_OK)
         end
@@ -111,6 +151,8 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Status: integer;
 begin
   case CurUninstallStep of
     usPostUninstall:
@@ -118,7 +160,14 @@ begin
         if not RemoveService(SERVICE_NAME) then
         begin
           MsgBox('Failed to uninstall the ' + SERVICE_NAME + ' service.' #13#13 'You need to uninstall it manually.', mbError, MB_OK);
-        end
+        end;
+
+        Status := DestroyServiceAccount(SERVICE_ACCOUNT_NAME);
+
+        if Status <> 0 then
+        begin
+          MsgBox('Failed to delete the service account for ' + SERVICE_ACCOUNT_NAME + ' (#' + IntToStr(Status) + ')' #13#13 'You need to delete it manually.', mbError, MB_OK);
+        end;
       end
   end
 end;
