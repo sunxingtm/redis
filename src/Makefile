@@ -21,7 +21,7 @@ else
   else
     CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
     CCLINK?= -lm -pthread
-    DEBUG?= -g -rdynamic -ggdb     
+  DEBUG?= -g -rdynamic -ggdb 
   endif  
 endif
 

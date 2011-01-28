@@ -58,11 +58,6 @@
 #define REDIS_REPLY_CHUNK_BYTES (5*1500) /* 5 TCP packets with default MTU */
 #define REDIS_MAX_LOGMSG_LEN    1024 /* Default maximum length of syslog messages */
 
-/* If more then REDIS_WRITEV_THRESHOLD write packets are pending use writev */
-#define REDIS_WRITEV_THRESHOLD      3
-/* Max number of iovecs used for each writev call */
-#define REDIS_WRITEV_IOVEC_COUNT    256
-
 /* Hash table parameters */
 #define REDIS_HT_MINFILL        10      /* Minimal hash table fill 10% */
 
@@ -154,6 +149,8 @@
 #define REDIS_IO_WAIT 32    /* The client is waiting for Virtual Memory I/O */
 #define REDIS_DIRTY_CAS 64  /* Watched keys modified. EXEC will fail. */
 #define REDIS_CLOSE_AFTER_REPLY 128 /* Close after writing entire reply. */
+#define REDIS_UNBLOCKED 256 /* This client was unblocked and is stored in
+                               server.unblocked_clients */
 
 /* Client request types */
 #define REDIS_REQ_INLINE 1
@@ -202,8 +199,8 @@
 #define APPENDFSYNC_EVERYSEC 2
 
 /* Zip structure related defaults */
-#define REDIS_HASH_MAX_ZIPMAP_ENTRIES 64
-#define REDIS_HASH_MAX_ZIPMAP_VALUE 512
+#define REDIS_HASH_MAX_ZIPMAP_ENTRIES 512
+#define REDIS_HASH_MAX_ZIPMAP_VALUE 64
 #define REDIS_LIST_MAX_ZIPLIST_ENTRIES 512
 #define REDIS_LIST_MAX_ZIPLIST_VALUE 64
 #define REDIS_SET_MAX_INTSET_ENTRIES 512
@@ -405,7 +402,6 @@ struct redisServer {
     long long stat_keyspace_misses; /* number of failed lookups of keys */
     /* Configuration */
     int verbosity;
-    int glueoutputbuf;
     int maxidletime;
     int dbnum;
     int daemonize;
@@ -658,7 +654,6 @@ void closeTimedoutClients(void);
 void freeClient(redisClient *c);
 void resetClient(redisClient *c);
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask);
-void sendReplyToClientWritev(aeEventLoop *el, int fd, void *privdata, int mask);
 void addReply(redisClient *c, robj *obj);
 void *addDeferredMultiBulkLength(redisClient *c);
 #ifdef _WIN64
@@ -684,6 +679,8 @@ void addReplyDouble(redisClient *c, double d);
 void addReplyLongLong(redisClient *c, long long ll);
 void addReplyMultiBulkLen(redisClient *c, long length);
 void *dupClientReplyValue(void *o);
+void getClientsMaxBuffers(unsigned long *longest_output_list,
+                          unsigned long *biggest_input_buffer);
 
 #ifdef _WIN32
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...);

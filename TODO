@@ -1,44 +1,4 @@
-Redis TODO
-----------
+This is a stable release! No TODO file here.
+Please check the TODO file in the master branch on github.
 
-WARNING: are you a possible Redis contributor?
-         Before implementing what is listed what is listed in this file
-         please drop a message in the Redis google group or chat with
-         antirez or pietern on irc.freenode.org #redis to check if the work
-         is already in progress and if the feature is still interesting for
-         us, and *how* exactly this can be implemented to have good changes
-         of a merge. Otherwise it is probably wasted work! Thank you
-
-VM TODO
-=======
-
-* Use multiple open FDs against the VM file, one for thread.
-* Check what happens performance-wise if instead of creating threads again and again the same threads are reused forever. Note: this requires a way to disable this clients in the child, but waiting for empty new jobs queue can be enough.
-* mmap the swap file.
-* Use just a single IO Job to swap out a key, and add a mutex so that pages in the page table can be marked as used and scanned from the thread itself.
-
-REPLICATION
-===========
-
-* PING between master and slave from time to time, so we can subject the
-master-slave link to timeout, and detect when the connection is gone even
-if the socket is still up.
-
-OPTIMIZATIONS
-=============
-
-* SORT: Don't copy the list into a vector when BY argument is constant.
-* Write the hash table size of every db in the dump, so that Redis can resize the hash table just one time when loading a big DB.
-* Read-only mode for slaves.
-
-KNOWN BUGS
-==========
-
-* What happens in the following scenario:
-    1) We are reading an AOF file.
-    2) SETEX FOO 5 BAR
-    3) APPEND FOO ZAP
-    What happens if between 1 and 2 for some reason (system under huge load
-    or alike) too many time passes? We should prevent expires while the
-    AOF is loading.
-
+    https://github.com/antirez/redis/raw/master/TODO
