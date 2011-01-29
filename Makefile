@@ -16,6 +16,9 @@ clean:
 $(TARGETS):
 	cd src && $(MAKE) $@
 
+setup:
+	cd setup && $(MAKE) $@
+
 src/help.h:
 	@./utils/generate-command-help.rb > $@
 
