@@ -108,6 +108,31 @@ begin
   end;
 end;
 
+procedure UpdateReplaceExistingConfFile;
+var
+  ConfDistFileHash: string;
+  ConfFileHash: string;
+begin
+  ConfFilePath := ExpandConstant('{app}\redis.conf');
+  ConfDistFilePath := ExpandConstant('{app}\redis-dist.conf');
+
+  if not FileExists(ConfFilePath) then
+  begin
+    ReplaceExistingConfFile := true;
+    Exit;
+  end;
+
+  if not FileExists(ConfDistFilePath) then
+  begin
+    ReplaceExistingConfFile := false;
+    Exit;
+  end;
+
+  ConfFileHash := GetSHA1OfFile(ConfFilePath);
+  ConfDistFileHash := GetSHA1OfFile(ConfDistFilePath);
+  ReplaceExistingConfFile := CompareStr(ConfFileHash, ConfDistFileHash) = 0;
+end;
+
 function InitializeSetup(): boolean;
 begin
   if IsServiceRunning(SERVICE_NAME) then
@@ -127,7 +152,9 @@ begin
     Result := false;
   end
   else
-    Result := true
+    Result := true;
+
+  UpdateReplaceExistingConfFile;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -169,6 +196,12 @@ var
   Status: integer;
 begin
   case CurUninstallStep of
+    usUninstall:
+      begin
+        if ReplaceExistingConfFile then
+          DeleteFile(ConfFilePath);
+      end;
+
     usPostUninstall:
       begin
         if not RemoveService(SERVICE_NAME) then
@@ -187,28 +220,8 @@ begin
 end;
 
 procedure BeforeInstallConf;
-var
-  ConfDistFileHash: string;
-  ConfFileHash: string;
 begin
-  ConfFilePath := ExpandConstant('{app}\redis.conf');
-  ConfDistFilePath := ExpandConstant('{app}\redis-dist.conf');
-
-  if not FileExists(ConfFilePath) then
-  begin
-    ReplaceExistingConfFile := true;
-    Exit;
-  end;
-
-  if not FileExists(ConfDistFilePath) then
-  begin
-    ReplaceExistingConfFile := false;
-    Exit;
-  end;
-
-  ConfFileHash := GetSHA1OfFile(ConfFilePath);
-  ConfDistFileHash := GetSHA1OfFile(ConfDistFilePath);
-  ReplaceExistingConfFile := CompareStr(ConfFileHash, ConfDistFileHash) = 0;
+  UpdateReplaceExistingConfFile;
 end;
 
 procedure AfterInstallConf;
