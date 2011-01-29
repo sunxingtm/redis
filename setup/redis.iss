@@ -1,12 +1,8 @@
+; Redis for Windows Setup Script created by Rui Lopes (ruilopes.com).
+; 
 ; TODO after uninstall, setup-helper.dll is left behind... figure out why its
 ;      not being automatically deleted.
-; TODO show a blurb after the install to alert the user to create a dedicated
-;      windows account to run redis, change the "data" directory permissions
-;      and modify the service startup type to automatic (maybe this should be
-;      done automatically?).
 ; TODO display a redis logo on the left of the setup dialog boxes.
-; TODO create start menu entry for redis-cli.exe? for redis doc url too?
-; TODO strip the binaries? its enough to build with make DEBUG=''
 ; TODO sign the setup?
 ;      NB: Unizeto Certum has free certificates to open-source authors.
 ;      See http://www.certum.eu/certum/cert,offer_software_publisher.xml
@@ -27,8 +23,7 @@ AppSupportURL=https://github.com/rgl/redis
 AppUpdatesURL=https://github.com/rgl/redis
 DefaultDirName={pf}\Redis
 DefaultGroupName=Redis
-LicenseFile=..\COPYING
-InfoBeforeFile=..\README
+LicenseFile=COPYING.txt
 OutputDir=.
 OutputBaseFilename=redis-setup
 SetupIconFile=redis.ico
@@ -52,8 +47,22 @@ Source: "..\src\redis-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-server.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-service.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\redis.conf"; DestDir: "{app}"; DestName: "redis-dist.conf"; BeforeInstall: BeforeInstallConf; AfterInstall: AfterInstallConf;
-Source: "..\README"; DestDir: "{app}"; DestName: "README.txt"
-Source: "..\COPYING"; DestDir: "{app}"; DestName: "COPYING.txt"
+Source: "..\README"; DestDir: "{app}"; DestName: "README.txt"; Flags: isreadme
+Source: "COPYING.txt"; DestDir: "{app}"
+Source: "Redis Home.url"; DestDir: "{app}"
+Source: "Redis Documentation.url"; DestDir: "{app}"
+Source: "Redis Windows Port Home.url"; DestDir: "{app}"
+Source: "Redis Windows Service and Setup Home.url"; DestDir: "{app}"
+
+[Icons]
+Name: "{group}\Redis Client"; Filename: "{app}\redis-cli.exe"; WorkingDir: "{app}"; IconFilename: "{app}\redis-service.exe"
+Name: "{group}\Redis Home"; Filename: "{app}\Redis Home.url"
+Name: "{group}\Redis Documentation"; Filename: "{app}\Redis Documentation.url"
+Name: "{group}\Redis Windows Port Home"; Filename: "{app}\Redis Windows Port Home.url"
+Name: "{group}\Redis Windows Service and Setup Home"; Filename: "{app}\Redis Windows Service and Setup Home.url"
+Name: "{group}\Redis Read Me"; Filename: "{app}\README.txt"
+Name: "{group}\Redis License"; Filename: "{app}\COPYING.txt"
+Name: "{group}\Uninstall Redis"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{tmp}\SetACL.exe"; Parameters: "-on data -ot file -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;

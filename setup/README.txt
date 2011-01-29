@@ -5,12 +5,17 @@ You first need to install Unicode Inno Setup (the QuickStart Pack) from:
 
 	http://www.jrsoftware.org/isdl.php#qsp
 
-NB: Get the ispack-5.4.0-unicode.exe file.
+NB Get the ispack-5.4.0-unicode.exe file.
 
 Then, open the redis.iss file with the InnoIDE application (normally,
 you can just double click the .iss file to open it) and click build.
 It should create a file named redis-setup.exe with the install
 program.
+
+NB You first need to build redis binaries. This is normally done by
+   running the following command in the top level directory:
+
+     make DEBUG=''
 
 
 This install uses SetACL.exe to grant NTFS file permissions to the
