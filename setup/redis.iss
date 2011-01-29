@@ -2,7 +2,6 @@
 ; 
 ; TODO after uninstall, setup-helper.dll is left behind... figure out why its
 ;      not being automatically deleted.
-; TODO display a redis logo on the left of the setup dialog boxes.
 ; TODO sign the setup?
 ;      NB: Unizeto Certum has free certificates to open-source authors.
 ;      See http://www.certum.eu/certum/cert,offer_software_publisher.xml
@@ -29,6 +28,10 @@ OutputBaseFilename=redis-setup
 SetupIconFile=redis.ico
 Compression=lzma2/max
 SolidCompression=yes
+WizardImageFile=redis-setup-wizard.bmp
+WizardImageBackColor=$000000
+WizardImageStretch=no
+WizardSmallImageFile=redis-setup-wizard-small.bmp
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
