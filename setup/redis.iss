@@ -1,5 +1,3 @@
-; TODO grant the RedisService account full-permission to the data and logs
-;      directories.
 ; TODO after uninstall, setup-helper.dll is left behind... figure out why its
 ;      not being automatically deleted.
 ; TODO show a blurb after the install to alert the user to create a dedicated
@@ -14,6 +12,8 @@
 ;      See http://www.certum.eu/certum/cert,offer_software_publisher.xml
 ;      See https://developer.mozilla.org/en/Signing_a_XPI
 
+#define ServiceAccountName "RedisService"
+#define ServiceName "redis"
 #define AppVersion GetFileVersion(AddBackslash(SourcePath) + "..\src\redis-service.exe")
 
 [Setup]
@@ -44,6 +44,7 @@ Name: "{app}\logs";
 
 [Files]
 Source: "..\src\service-setup-helper.dll"; DestDir: "{app}"; DestName: "setup-helper.dll"
+Source: "SetACL.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion
 Source: "..\src\redis-benchmark.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-check-aof.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-check-dump.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -54,14 +55,18 @@ Source: "..\redis.conf"; DestDir: "{app}"; DestName: "redis-dist.conf"; BeforeIn
 Source: "..\README"; DestDir: "{app}"; DestName: "README.txt"
 Source: "..\COPYING"; DestDir: "{app}"; DestName: "COPYING.txt"
 
+[Run]
+Filename: "{tmp}\SetACL.exe"; Parameters: "-on data -ot file -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;
+Filename: "{tmp}\SetACL.exe"; Parameters: "-on logs -ot file -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;
+
 [Code]
 #include "service.pas"
 #include "service-account.pas"
 
 const
-  SERVICE_ACCOUNT_NAME = 'RedisService';
+  SERVICE_ACCOUNT_NAME = '{#ServiceAccountName}';
   SERVICE_ACCOUNT_DESCRIPTION = 'Redis Server Service';
-  SERVICE_NAME = 'redis';
+  SERVICE_NAME = '{#ServiceName}';
   SERVICE_DISPLAY_NAME = 'Redis Server';
   SERVICE_DESCRIPTION = 'Persistent key-value database';
 
@@ -123,7 +128,7 @@ var
   Status: integer;
 begin
   case CurStep of
-    ssPostInstall:
+    ssInstall:
       begin
         if ServiceAccountExists(SERVICE_ACCOUNT_NAME) <> 0 then
         begin

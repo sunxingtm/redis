@@ -11,3 +11,9 @@ Then, open the redis.iss file with the InnoIDE application (normally,
 you can just double click the .iss file to open it) and click build.
 It should create a file named redis-setup.exe with the install
 program.
+
+
+This install uses SetACL.exe to grant NTFS file permissions to the
+RedisServer account. SetACL can be download from:
+
+  http://helgeklein.com/setacl/
