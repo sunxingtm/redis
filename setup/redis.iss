@@ -10,8 +10,19 @@
 #define ServiceAccountName "RedisService"
 #define ServiceName "redis"
 #define AppVersion GetFileVersion(AddBackslash(SourcePath) + "..\src\redis-service.exe")
+#ifdef _WIN64
+#define Bits "64"
+#define ArchitecturesInstallIn64BitMode "x64"
+#define ArchitecturesAllowed "x64"
+#else
+#define Bits "32"
+#define ArchitecturesInstallIn64BitMode
+#define ArchitecturesAllowed "x86 x64"
+#endif
 
 [Setup]
+ArchitecturesInstallIn64BitMode={#ArchitecturesInstallIn64BitMode}
+ArchitecturesAllowed={#ArchitecturesAllowed}
 AppID={{B882ADC5-9DA9-4729-899A-F6728C146D40}
 AppName=Redis
 AppVersion={#AppVersion}
@@ -24,7 +35,7 @@ DefaultDirName={pf}\Redis
 DefaultGroupName=Redis
 LicenseFile=COPYING.txt
 OutputDir=.
-OutputBaseFilename=redis-setup
+OutputBaseFilename=redis-setup-{#Bits}-bit
 SetupIconFile=redis.ico
 Compression=lzma2/max
 SolidCompression=yes

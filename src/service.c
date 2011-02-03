@@ -29,6 +29,7 @@
  */
 
 /*
+ * TODO figure out why zfree does not work when we do a 64-bit compilation
  * TODO interpret the "rename-command SHUTDOWN" configuration stanza
  * TODO use tcmalloc
  * TODO support redis auth command when connecting to redis
@@ -37,8 +38,8 @@
 
 #define REDIS_CONFIG_LINE_MAX 1024
 #define _WIN32_WINNT 0x0501
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #include <unistd.h>
 #include "win32fixes.h"
 #include "hiredis.h"
@@ -208,7 +209,9 @@ static int loadConfiguration(const char* fileName) {
         for (int n = 0; n < argc; ++n) {
             sdsfree(argv[n]);
         }
-        zfree(argv);
+#ifndef _WIN64
+        zfree(argv); // XXX why on 64-bit it crashes here?
+#endif
         sdsfree(line);
     }
 

@@ -1,5 +1,9 @@
 ISCC?= '/c/Program Files (x86)/Inno Setup 5/ISCC.exe'
 
+ifneq (,$(shell objdump -f ../src/redis-server.exe | grep x86-64))
+ISCCOPT+= -d_WIN64
+endif
+
 setup:
 	strip ../src/*.{exe,dll}
-	$(ISCC) redis.iss
+	$(ISCC) redis.iss $(ISCCOPT)

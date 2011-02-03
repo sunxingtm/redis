@@ -34,13 +34,14 @@
 //         in the setup (managed service accounts do not have a password).
 
 #define _WIN32_WINNT 0x0501
+#define WIN32_LEAN_AND_MEAN
+#define STATUS_SUCCESS 0
 #ifndef UNICODE
 #define UNICODE
 #endif
 
 #include <windows.h>
 #include <lm.h>
-#include <ntdef.h>
 #include <ntsecapi.h>
 #include <wchar.h>
 
