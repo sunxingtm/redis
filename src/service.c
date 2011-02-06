@@ -31,7 +31,6 @@
 /*
  * TODO only exit serviceMain after redis-server exits
  * TODO figure out why zfree does not work when we do a 64-bit compilation
- * TODO interpret the "rename-command SHUTDOWN" configuration stanza
  * TODO use tcmalloc
  * TODO periodically ping redis to check it health (maybe this is not really needed; time will tell!)
  */
@@ -56,6 +55,8 @@ static char* g_redisConfPath;
 static char* g_redisHost;
 static int g_redisPort;
 static char* g_redisPassword;
+static char* g_redisAuthCommandName;
+static char* g_redisShutdownCommandName;
 static char* g_serviceName;
 static SERVICE_STATUS g_serviceStatus;
 static SERVICE_STATUS_HANDLE g_serviceSatusHandle;
@@ -145,6 +146,8 @@ static int initialize(int argc, char** argv) {
     g_redisConfPath = argc > 2 ? argv[2] : "redis.conf";
     g_redisHost = "127.0.0.1";
     g_redisPort = 6379;
+    g_redisAuthCommandName = "AUTH";
+    g_redisShutdownCommandName = "SHUTDOWN";
 
     if (setBinDirectoryPath(argv[0]))
         return -1;
@@ -155,7 +158,23 @@ static int initialize(int argc, char** argv) {
     // want compat with how redis handles "dir" and "include" directives),
     // but we don't want that behaviour on this service, so revert to the
     // binary directory (set by setBinDirectoryPath).
-    return chdir(g_binDirectoryPath) < 0 ? -1 : result;
+    if (chdir(g_binDirectoryPath) < 0)
+        return -1;
+
+    if (result < 0)
+        return result;
+
+    if (*g_redisAuthCommandName == 0 && g_redisPassword) {
+        LOG_ERROR("The AUTH command cannot be killed. Enable it in the configuration file.");
+        return -1;
+    }
+
+    if (*g_redisShutdownCommandName == 0) {
+        LOG_ERROR("The SHUTDOWN command cannot be killed. Enable it in the configuration file.");
+        return -1;
+    }
+
+    return 0;
 }
 
 
@@ -207,6 +226,23 @@ static int loadConfiguration(const char* fileName) {
             // NB currently, no one is freeing g_redisPassword, but this is only
             //    set at initialization time, so don't bother for now...
             g_redisPassword = zstrdup(argv[1]);
+        }
+        else if (!strcmp(name, "rename-command") && argc == 3) {
+            char *commandName = argv[1];
+            char *newCommandName = argv[2];
+
+            if (!stricmp(commandName, g_redisAuthCommandName)) {
+                // NB currently, no one is freeing g_redisAuthCommandName, but
+                //    this is only set at initialization time, so don't bother
+                //    for now...
+                g_redisAuthCommandName = zstrdup(newCommandName);
+            }
+            else if (!stricmp(commandName, g_redisShutdownCommandName)) {
+                // NB currently, no one is freeing g_redisAuthCommandName, but
+                //    this is only set at initialization time, so don't bother
+                //    for now...
+                g_redisShutdownCommandName = zstrdup(newCommandName);
+            }
         }
         else if (!strcmp(name, "include") && argc == 2) {
             loadConfiguration(argv[1]);
@@ -386,7 +422,7 @@ static redisContext* connectRedis(void) {
     if (!g_redisPassword)
         return redisContext;
 
-    redisReply *reply = redisCommand(redisContext, "AUTH %s", g_redisPassword);
+    redisReply *reply = redisCommand(redisContext, "%s %s", g_redisAuthCommandName, g_redisPassword);
 
     if (strcmp(reply->str, "OK")) {
         LOG_ERROR("Failed to authenticate Redis at %s:%d: %s", g_redisHost, g_redisPort, reply->str);
@@ -448,7 +484,7 @@ static void shutdownRedis(void) {
         return;
     }
 
-    redisReply *reply = redisCommand(redisContext, "SHUTDOWN");
+    redisReply *reply = redisCommand(redisContext, g_redisShutdownCommandName);
 
     if (reply != NULL) {
         if (strcmp(reply->str, "OK")) {
