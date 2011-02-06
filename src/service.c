@@ -29,10 +29,10 @@
  */
 
 /*
+ * TODO only exit serviceMain after redis-server exits
  * TODO figure out why zfree does not work when we do a 64-bit compilation
  * TODO interpret the "rename-command SHUTDOWN" configuration stanza
  * TODO use tcmalloc
- * TODO support redis auth command when connecting to redis
  * TODO periodically ping redis to check it health (maybe this is not really needed; time will tell!)
  */
 
@@ -55,6 +55,7 @@ static char* g_binDirectoryPath;
 static char* g_redisConfPath;
 static char* g_redisHost;
 static int g_redisPort;
+static char* g_redisPassword;
 static char* g_serviceName;
 static SERVICE_STATUS g_serviceStatus;
 static SERVICE_STATUS_HANDLE g_serviceSatusHandle;
@@ -201,6 +202,11 @@ static int loadConfiguration(const char* fileName) {
         }
         else if (!strcmp(name, "logfile") && argc == 2) {
             setFileLogPathFromRedisLogFilePath(argv[1]);
+        }
+        else if (!strcmp(name, "requirepass") && argc == 2) {
+            // NB currently, no one is freeing g_redisPassword, but this is only
+            //    set at initialization time, so don't bother for now...
+            g_redisPassword = zstrdup(argv[1]);
         }
         else if (!strcmp(name, "include") && argc == 2) {
             loadConfiguration(argv[1]);
@@ -372,11 +378,24 @@ static redisContext* connectRedis(void) {
     redisContext* redisContext = redisConnect(g_redisHost, g_redisPort);
 
     if (redisContext->err) {
-        LOG_ERROR("Failed connect to Redis at %s:%d: %s", g_redisHost, g_redisPort, redisContext->errstr);
+        LOG_ERROR("Failed to connect Redis at %s:%d: %s", g_redisHost, g_redisPort, redisContext->errstr);
         redisFree(redisContext);
         return NULL;
     }
 
+    if (!g_redisPassword)
+        return redisContext;
+
+    redisReply *reply = redisCommand(redisContext, "AUTH %s", g_redisPassword);
+
+    if (strcmp(reply->str, "OK")) {
+        LOG_ERROR("Failed to authenticate Redis at %s:%d: %s", g_redisHost, g_redisPort, reply->str);
+        freeReplyObject(reply);
+        redisFree(redisContext);
+        return NULL;
+    }
+
+    freeReplyObject(reply);
     return redisContext;
 }
 
@@ -423,15 +442,18 @@ static int startRedis(void) {
 
 static void shutdownRedis(void) {
     redisContext* redisContext = connectRedis();
-    
+ 
     if (redisContext == NULL) {
-        LOG_ERROR("Failed to shutdown redis (cound not connect to it)");
+        LOG_ERROR("Failed to shutdown Redis at %s:%d: could not connect", g_redisHost, g_redisPort);
         return;
     }
 
     redisReply *reply = redisCommand(redisContext, "SHUTDOWN");
 
     if (reply != NULL) {
+        if (strcmp(reply->str, "OK")) {
+            LOG_ERROR("Failed to shutdown Redis at %s:%d: %s", g_redisHost, g_redisPort, reply->str);
+        }
         freeReplyObject(reply);
     }
 
