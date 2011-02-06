@@ -17,7 +17,7 @@ clean:
 $(TARGETS):
 	cd src && $(MAKE) $@
 
-setup:
+setup: all
 	cd setup && $(MAKE) $@
 
 src/help.h:
