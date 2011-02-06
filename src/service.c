@@ -143,7 +143,7 @@ static int initialize(int argc, char** argv) {
     g_logLevel = LOG_LEVEL_DEBUG;
     g_fileLogPath = "redis-service.log";
     g_serviceName = argc > 1 ? argv[1] : "redis";
-    g_redisConfPath = argc > 2 ? argv[2] : "redis.conf";
+    g_redisConfPath = argc > 2 ? argv[2] : "conf/redis.conf";
     g_redisHost = "127.0.0.1";
     g_redisPort = 6379;
     g_redisAuthCommandName = "AUTH";
@@ -448,6 +448,8 @@ static int startRedis(void) {
     g_redisProcess = NULL;
 
     sds commandLine = sdscatprintf(sdsempty(), "%s %s", g_serviceName, g_redisConfPath);
+
+    LOG_INFO("Starting Redis with command line: %s", commandLine);
 
     if (!CreateProcess(
         "redis-server.exe",

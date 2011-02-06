@@ -6,7 +6,7 @@ This fork lets you run Redis Server as a Windows service.
 It introduces the redis-service.exe binary; this is a Windows service that
 simply starts and stops the redis-server.exe binary.
 
-It expects to find redis-server.exe and redis.conf files in the same
+It expects to find redis-server.exe and conf\redis.conf files in the same
 directory as redis-service.exe.
 
 This fork also introduces a Windows installer; this will:

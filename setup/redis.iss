@@ -48,6 +48,7 @@ WizardSmallImageFile=redis-setup-wizard-small.bmp
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Dirs]
+Name: "{app}\conf";
 Name: "{app}\data";
 Name: "{app}\logs";
 
@@ -60,7 +61,7 @@ Source: "..\src\redis-check-dump.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-server.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\src\redis-service.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\redis.conf"; DestDir: "{app}"; DestName: "redis-dist.conf"; BeforeInstall: BeforeInstallConf; AfterInstall: AfterInstallConf;
+Source: "..\redis.conf"; DestDir: "{app}\conf"; DestName: "redis-dist.conf"; BeforeInstall: BeforeInstallConf; AfterInstall: AfterInstallConf;
 Source: "..\README"; DestDir: "{app}"; DestName: "README.txt"; Flags: isreadme
 Source: "COPYING.txt"; DestDir: "{app}"
 Source: "Redis Home.url"; DestDir: "{app}"
@@ -127,8 +128,8 @@ var
   ConfDistFileHash: string;
   ConfFileHash: string;
 begin
-  ConfFilePath := ExpandConstant('{app}\redis.conf');
-  ConfDistFilePath := ExpandConstant('{app}\redis-dist.conf');
+  ConfFilePath := ExpandConstant('{app}\conf\redis.conf');
+  ConfDistFilePath := ExpandConstant('{app}\conf\redis-dist.conf');
 
   if not FileExists(ConfFilePath) then
   begin
@@ -245,7 +246,7 @@ var
   N: integer;
   Line: string;
 begin
-  BasePath := RemoveBackslash(ExtractFileDir(ConfDistFilePath));
+  BasePath := RemoveBackslash(ExpandConstant('{app}'));
 
   if not LoadStringsFromFile(ConfDistFilePath, ConfLines) then
   begin
@@ -267,6 +268,12 @@ begin
     if Pos('dir ', Line) = 1 then
     begin
       ConfLines[N] := ToForwardSlashes(Format('dir "%s\data"', [BasePath]));
+      Continue;
+    end;
+
+    if Pos('vm-swap-file ', Line) = 1 then
+    begin
+      ConfLines[N] := ToForwardSlashes(Format('vm-swap-file "%s\data\redis.swap"', [BasePath]));
       Continue;
     end;
 
