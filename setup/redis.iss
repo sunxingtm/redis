@@ -48,9 +48,9 @@ WizardSmallImageFile=redis-setup-wizard-small.bmp
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Dirs]
-Name: "{app}\conf";
-Name: "{app}\data";
-Name: "{app}\logs";
+Name: "{app}\conf"
+Name: "{app}\data"
+Name: "{app}\logs"
 
 [Files]
 Source: "..\src\service-setup-helper.dll"; DestDir: "{app}"; DestName: "setup-helper.dll"
@@ -80,8 +80,9 @@ Name: "{group}\Redis License"; Filename: "{app}\COPYING.txt"
 Name: "{group}\Uninstall Redis"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{tmp}\SetACL.exe"; Parameters: "-on data -ot file -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;
-Filename: "{tmp}\SetACL.exe"; Parameters: "-on logs -ot file -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;
+Filename: "{tmp}\SetACL.exe"; Parameters: "-on conf -ot file -actn setprot -op ""dacl:p_nc;sacl:p_nc"" -actn ace -ace ""n:{#ServiceAccountName};p:read"""; WorkingDir: "{app}"; Flags: runhidden;
+Filename: "{tmp}\SetACL.exe"; Parameters: "-on data -ot file -actn setprot -op ""dacl:p_nc;sacl:p_nc"" -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;
+Filename: "{tmp}\SetACL.exe"; Parameters: "-on logs -ot file -actn setprot -op ""dacl:p_nc;sacl:p_nc"" -actn ace -ace ""n:{#ServiceAccountName};p:full"""; WorkingDir: "{app}"; Flags: runhidden;
 
 [Code]
 #include "service.pas"
