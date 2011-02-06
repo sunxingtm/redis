@@ -7,3 +7,6 @@ endif
 setup:
 	strip ../src/*.{exe,dll}
 	$(ISCC) redis.iss $(ISCCOPT)
+
+clean:
+	rm -f redis-setup-*.exe

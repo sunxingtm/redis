@@ -12,6 +12,7 @@ clean:
 	cd src && $(MAKE) $@
 	cd deps/hiredis && $(MAKE) $@
 	cd deps/linenoise && $(MAKE) $@
+	cd setup && $(MAKE) $@
 
 $(TARGETS):
 	cd src && $(MAKE) $@
