@@ -29,7 +29,6 @@
  */
 
 /*
- * TODO only exit serviceMain after redis-server exits
  * TODO figure out why zfree does not work when we do a 64-bit compilation
  * TODO use tcmalloc
  * TODO periodically ping redis to check it health (maybe this is not really needed; time will tell!)
@@ -73,7 +72,7 @@ static int registerServiceControlHandler(void);
 static void setServiceStatus(DWORD state, DWORD exitCode);
 
 static int startRedis(void);
-static void shutdownRedis(void);
+static int shutdownRedis(void);
 
 
 #define LOG_LEVEL_DEBUG     0
@@ -363,7 +362,12 @@ static void serviceMain(int argc __attribute__((unused)), char** argv __attribut
 
     if (waitResult != WAIT_OBJECT_0) {
         LOG_NOTICE("Stopping redis (PID=%d)", GetProcessId(g_redisProcess));
-        shutdownRedis();
+
+        if (!shutdownRedis())
+            waitResult = WaitForSingleObject(g_redisProcess, INFINITE);
+
+        if (waitResult != WAIT_OBJECT_0)
+            LOG_ERROR("Redis did not stop on our command. Ignoring...");
     }
 
     CloseHandle(g_stopEvent);
@@ -478,12 +482,12 @@ static int startRedis(void) {
 }
 
 
-static void shutdownRedis(void) {
+static int shutdownRedis(void) {
     redisContext* redisContext = connectRedis();
  
     if (redisContext == NULL) {
         LOG_ERROR("Failed to shutdown Redis at %s:%d: could not connect", g_redisHost, g_redisPort);
-        return;
+        return -1;
     }
 
     redisReply *reply = redisCommand(redisContext, g_redisShutdownCommandName);
@@ -491,11 +495,15 @@ static void shutdownRedis(void) {
     if (reply != NULL) {
         if (strcmp(reply->str, "OK")) {
             LOG_ERROR("Failed to shutdown Redis at %s:%d: %s", g_redisHost, g_redisPort, reply->str);
+            freeReplyObject(reply);
+            redisFree(redisContext);
+            return -1;
         }
         freeReplyObject(reply);
     }
 
     redisFree(redisContext);
+    return 0;
 }
 
 static int fileLog(int level, const char* format, ...) {
