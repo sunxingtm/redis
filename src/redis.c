@@ -1310,6 +1310,7 @@ sds genRedisInfoString(void) {
             (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
+            lol, bib,            
             server.bpop_blocked_clients,
             (unsigned long long) zmalloc_used_memory(),
             hmem,
@@ -1348,7 +1349,7 @@ sds genRedisInfoString(void) {
             (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-        lol, bib,
+            lol, bib,
             server.bpop_blocked_clients,
             zmalloc_used_memory(),
             hmem,
@@ -1359,8 +1360,8 @@ sds genRedisInfoString(void) {
 #else
         0,
 #endif
-        server.loading,
-        server.appendonly,
+            server.loading,
+            server.appendonly,
             server.dirty,
             server.bgsavechildpid != -1,
             server.lastsave,
@@ -1468,9 +1469,15 @@ sds genRedisInfoString(void) {
         size_t count = zmalloc_allocations_for_size(j);
         if (count) {
             if (info[sdslen(info)-1] != ':') info = sdscatlen(info,",",1);
+#ifdef _WIN32
+            info = sdscatprintf(info,"%s%d=%llu",
+                (j == ZMALLOC_MAX_ALLOC_STAT) ? ">=" : "",
+                j,(unsigned long long)count);           
+#else            
             info = sdscatprintf(info,"%s%d=%zu",
                 (j == ZMALLOC_MAX_ALLOC_STAT) ? ">=" : "",
                 j,count);
+#endif            
         }
     }
     info = sdscat(info,"\r\n");
