@@ -895,7 +895,7 @@ void initServer() {
 
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
-    setupSigSegvAction();
+    setupSignalHandlers();
 
 #ifndef _WIN32
     if (server.syslog_enabled) {
@@ -1737,10 +1737,8 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-/* ============================= Backtrace support ========================= */
-
 #ifdef HAVE_BACKTRACE
-void *getMcontextEip(ucontext_t *uc) {
+static void *getMcontextEip(ucontext_t *uc) {
 #if defined(__FreeBSD__)
     return (void*) uc->uc_mcontext.mc_eip;
 #elif defined(__dietlibc__)
@@ -1768,7 +1766,7 @@ void *getMcontextEip(ucontext_t *uc) {
 #endif
 }
 
-void segvHandler(int sig, siginfo_t *info, void *secret) {
+static void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
     void *trace[100];
     char **messages = NULL;
     int i, trace_size = 0;
@@ -1807,82 +1805,35 @@ void segvHandler(int sig, siginfo_t *info, void *secret) {
     sigaction (sig, &act, NULL);
     kill(getpid(),sig);
 }
-
-void sigtermHandler(int sig) {
-    REDIS_NOTUSED(sig);
-
-    redisLog(REDIS_WARNING,"SIGTERM received, scheduling shutting down...");
-    server.shutdown_asap = 1;
-}
-
-void setupSigSegvAction(void) {
-    struct sigaction act;
-
-    sigemptyset (&act.sa_mask);
-    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
-     * is used. Otherwise, sa_handler is used */
-    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
-    act.sa_sigaction = segvHandler;
-    sigaction (SIGSEGV, &act, NULL);
-    sigaction (SIGBUS, &act, NULL);
-    sigaction (SIGFPE, &act, NULL);
-    sigaction (SIGILL, &act, NULL);
-    sigaction (SIGBUS, &act, NULL);
-
-    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
-    act.sa_handler = sigtermHandler;
-    sigaction (SIGTERM, &act, NULL);
-    return;
-}
-
-#else /* HAVE_BACKTRACE */
-#ifdef _WIN32
-/* MinGW singnal handlers without backtrace */
-void segvHandler(int sig) {
-    sds infostring;
-
-    redisLog(REDIS_WARNING,
-        "======= Ooops! Redis %s got signal: -%d- =======", REDIS_VERSION, sig);
-    infostring = genRedisInfoString();
-    redisLog(REDIS_WARNING, "%s",infostring);
-    /* It's not safe to sdsfree() the returned string under memory
-     * corruption conditions. Let it leak as we are going to abort */
-
-    /* free(messages); Don't call free() with possibly corrupted memory. */
-    if (server.daemonize) unlink(server.pidfile);
-    _exit(0);
-}
-
-void sigtermHandler(int sig) {
-    REDIS_NOTUSED(sig);
-
-    redisLog(REDIS_WARNING,"SIGTERM received, scheduling shutting down...");
-    server.shutdown_asap = 1;
-}
-
-void setupSigSegvAction(void) {
-    struct sigaction act;
-
-    sigemptyset (&act.sa_mask);
-    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction
-     * is used. Otherwise, sa_handler is used */
-    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
-    act.sa_sigaction = segvHandler;
-    sigaction (SIGSEGV, &act, NULL);
-    sigaction (SIGBUS, &act, NULL);
-    sigaction (SIGFPE, &act, NULL);
-    sigaction (SIGILL, &act, NULL);
-    sigaction (SIGBUS, &act, NULL);
-
-    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
-    act.sa_handler = sigtermHandler;
-    sigaction (SIGTERM, &act, NULL);
-    return;
-}
-#else
-void setupSigSegvAction(void) {
-}
-#endif
 #endif /* HAVE_BACKTRACE */
+
+static void sigtermHandler(int sig) {
+    REDIS_NOTUSED(sig);
+
+    redisLog(REDIS_WARNING,"Received SIGTERM, scheduling shutdown...");
+    server.shutdown_asap = 1;
+}
+
+void setupSignalHandlers(void) {
+    struct sigaction act;
+
+    /* When the SA_SIGINFO flag is set in sa_flags then sa_sigaction is used.
+     * Otherwise, sa_handler is used. */
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND;
+    act.sa_handler = sigtermHandler;
+    sigaction(SIGTERM, &act, NULL);
+
+#ifdef HAVE_BACKTRACE
+    sigemptyset(&act.sa_mask);
+    act.sa_flags = SA_NODEFER | SA_ONSTACK | SA_RESETHAND | SA_SIGINFO;
+    act.sa_sigaction = sigsegvHandler;
+    sigaction(SIGSEGV, &act, NULL);
+    sigaction(SIGBUS, &act, NULL);
+    sigaction(SIGFPE, &act, NULL);
+    sigaction(SIGILL, &act, NULL);
+#endif
+    return;
+}
 
 /* The End */
