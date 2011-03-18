@@ -142,7 +142,7 @@ service-res.o: service.rc
 	$(WINDRES) $(WINDRESOPT) service.rc $@
 
 service-setup-helper.dll: service-setup-helper.c
-	$(CC) -o $@ -shared $(CFLAGS) $(DEBUG) -m32 -Wl,--kill-at $< -lnetapi32
+	$(CC) -o $@ -shared $(CFLAGS) $(DEBUG) -m32 -Wl,--kill-at $< -lnetapi32 -ladvapi32
 
 redis-benchmark: dependencies $(BENCHOBJ)
 	cd ../deps/hiredis && $(MAKE) static
