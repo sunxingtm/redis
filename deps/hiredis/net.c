@@ -139,9 +139,10 @@ static int redisSetNonBlock(redisContext *c, int fd) {
 #ifdef _WIN32
 static int redisSetTcpNoDelay(redisContext *c, int fd) {
     int yes = 1;
+  //if (setsockopt((SOCKET)fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&yes, sizeof(yes)) == -1) {
     if (setsockopt((SOCKET)fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&yes, sizeof(yes)) == -1) {
         __redisSetError(c,REDIS_ERR_IO,
-            sdscatprintf(sdsempty(), "setsockopt(TCP_NODELAY): %s", strerror(errno)));
+            sdscatprintf(sdsempty(), "setsockopt(TCP_NODELAY): %d", (int)GetLastError()));
         return REDIS_ERR;
     }
     return REDIS_OK;
@@ -172,6 +173,9 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port) {
     sa.sin_port = htons(port);
 #ifdef _WIN32
     unsigned long inAddress;
+
+    if (redisSetTcpNoDelay(c,s) != REDIS_OK)
+        return REDIS_ERR;
 
     inAddress = inet_addr(addr);
     if (inAddress == INADDR_NONE || inAddress == INADDR_ANY) {
@@ -207,7 +211,8 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port) {
 #ifdef _WIN32
     if (connect((SOCKET)s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
         errno = WSAGetLastError();
-        if ((errno == WSAEINVAL) || (errno == WSAEWOULDBLOCK)) errno = EINPROGRESS;
+        if ((errno == WSAEINVAL) || (errno == WSAEWOULDBLOCK))
+            errno = EINPROGRESS;
 #else
     if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
 #endif
@@ -224,15 +229,12 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port) {
         }
     }
 
+#ifndef _WIN32
     if (redisSetTcpNoDelay(c,s) != REDIS_OK) {
-#ifdef _WIN32
-            closesocket(s);
-#else
-            close(s);
-#endif
+        close(s);
         return REDIS_ERR;
     }
-
+#endif
     c->fd = s;
     c->flags |= REDIS_CONNECTED;
     return REDIS_OK;

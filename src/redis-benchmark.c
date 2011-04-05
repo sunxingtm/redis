@@ -179,7 +179,7 @@ static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
     REDIS_NOTUSED(mask);
-  
+
     /* Calculate latency only for the first read event. This means that the
      * server already sent the reply and we need to parse it. Parsing overhead
      * is not part of the latency, so calculate it only once, here. */
@@ -221,11 +221,11 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
-#ifdef _WIN32      
-        int nwritten = send(c->context->fd,ptr,sdslen(c->obuf)-c->written, 0);      
-#else      
+#ifdef _WIN32
+        int nwritten = send(c->context->fd,ptr,sdslen(c->obuf)-c->written, 0);
+#else
         int nwritten = write(c->context->fd,ptr,sdslen(c->obuf)-c->written);
-#endif      
+#endif
         if (nwritten == -1) {
             if (errno != EPIPE)
                 fprintf(stderr, "Writing to socket: %s\n", strerror(errno));
@@ -346,7 +346,7 @@ void parseOptions(int argc, char **argv) {
 
     for (i = 1; i < argc; i++) {
         int lastarg = i==argc-1;
-        
+
         if (!strcmp(argv[i],"-c") && !lastarg) {
             config.numclients = atoi(argv[i+1]);
             i++;
@@ -428,7 +428,7 @@ int main(int argc, char **argv) {
 
 #ifdef _WIN32
     w32initWinSock();
-#endif  
+#endif
 
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
@@ -545,6 +545,6 @@ int main(int argc, char **argv) {
 
 #ifdef _WIN32
     WSACleanup();
-#endif  
+#endif
     return 0;
 }
