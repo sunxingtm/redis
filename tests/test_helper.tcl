@@ -108,6 +108,7 @@ proc cleanup {} {
 }
 
 proc execute_everything {} {
+    execute_tests "unit/printver"
     execute_tests "unit/auth"
     execute_tests "unit/protocol"
     execute_tests "unit/basic"
@@ -124,9 +125,10 @@ proc execute_everything {} {
     execute_tests "integration/aof"
 #    execute_tests "integration/redis-cli"
     execute_tests "unit/pubsub"
+    execute_tests "unit/slowlog"
 
     # run tests with VM enabled
-    set ::global_overrides {vm-enabled yes}
+    set ::global_overrides {vm-enabled yes really-use-vm yes}
     execute_tests "unit/protocol"
     execute_tests "unit/basic"
     execute_tests "unit/type/list"

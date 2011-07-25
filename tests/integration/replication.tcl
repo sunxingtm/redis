@@ -6,6 +6,24 @@ start_server {tags {"repl"}} {
             s -1 role
         } {slave}
 
+        test {BRPOPLPUSH replication, when blocking against empty list} {
+            set rd [redis_deferring_client]
+            $rd brpoplpush a b 5
+            r lpush a foo
+            after 1000
+            assert_equal [r debug digest] [r -1 debug digest]
+        }
+
+        test {BRPOPLPUSH replication, list exists} {
+            set rd [redis_deferring_client]
+            r lpush c 1
+            r lpush c 2
+            r lpush c 3
+            $rd brpoplpush c d 5
+            after 1000
+            assert_equal [r debug digest] [r -1 debug digest]
+        }
+
         test {MASTER and SLAVE dataset should be identical after complex ops} {
             createComplexDataset r 10000
             after 500
@@ -27,6 +45,8 @@ start_server {tags {"repl"}} {
         test {MASTER and SLAVE consistency with expire} {
             createComplexDataset r 50000 useexpire
             after 4000 ;# Make sure everything expired before taking the digest
+            r keys *   ;# Force DEL syntesizing to slave
+            after 1000 ;# Wait another second. Now everything should be fine.
             if {[r debug digest] ne [r -1 debug digest]} {
                 set csv1 [csvdump r]
                 set csv2 [csvdump {r -1}]

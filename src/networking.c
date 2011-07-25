@@ -61,6 +61,7 @@ redisClient *createClient(int fd) {
     c->reqtype = 0;
     c->argc = 0;
     c->argv = NULL;
+    c->cmd = NULL;
     c->multibulklen = 0;
     c->bulklen = -1;
     c->sentlen = 0;
@@ -484,7 +485,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     cfd = anetTcpAccept(server.neterr, fd, cip, &cport);
     if (cfd == AE_ERR) {
-        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        redisLog(REDIS_WARNING,"Accepting client connection: %s", server.neterr);
         return;
     }
     redisLog(REDIS_VERBOSE,"Accepted %s:%d", cip, cport);
@@ -499,7 +500,7 @@ void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     cfd = anetUnixAccept(server.neterr, fd);
     if (cfd == AE_ERR) {
-        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        redisLog(REDIS_WARNING,"Accepting client connection: %s", server.neterr);
         return;
     }
     redisLog(REDIS_VERBOSE,"Accepted connection to %s", server.unixsocket);
@@ -512,6 +513,7 @@ static void freeClientArgv(redisClient *c) {
     for (j = 0; j < c->argc; j++)
         decrRefCount(c->argv[j]);
     c->argc = 0;
+    c->cmd = NULL;
 }
 
 void freeClient(redisClient *c) {
@@ -981,3 +983,27 @@ void getClientsMaxBuffers(unsigned long *longest_output_list,
     *biggest_input_buffer = bib;
 }
 
+void rewriteClientCommandVector(redisClient *c, int argc, ...) {
+    va_list ap;
+    int j;
+    robj **argv; /* The new argument vector */
+
+    argv = zmalloc(sizeof(robj*)*argc);
+    va_start(ap,argc);
+    for (j = 0; j < argc; j++) {
+        robj *a;
+        
+        a = va_arg(ap, robj*);
+        argv[j] = a;
+        incrRefCount(a);
+    }
+    /* We free the objects in the original vector at the end, so we are
+     * sure that if the same objects are reused in the new vector the
+     * refcount gets incremented before it gets decremented. */
+    for (j = 0; j < c->argc; j++) decrRefCount(c->argv[j]);
+    zfree(c->argv);
+    /* Replace argv and argc with our new versions. */
+    c->argv = argv;
+    c->argc = argc;
+    va_end(ap);
+}

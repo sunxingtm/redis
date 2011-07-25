@@ -624,6 +624,10 @@ void zunionInterGenericCommand(redisClient *c, robj *dstkey, int op) {
             if (obj->type == REDIS_ZSET) {
                 src[i].dict = ((zset*)obj->ptr)->dict;
             } else if (obj->type == REDIS_SET) {
+                if (obj->encoding == REDIS_ENCODING_INTSET)
+                    setTypeConvert(obj, REDIS_ENCODING_HT);
+
+                redisAssert(obj->encoding == REDIS_ENCODING_HT);
                 src[i].dict = (obj->ptr);
             } else {
                 zfree(src);
@@ -691,7 +695,18 @@ void zunionInterGenericCommand(redisClient *c, robj *dstkey, int op) {
 
                 score = src[0].weight * zunionInterDictValue(de);
                 for (j = 1; j < setnum; j++) {
-                    dictEntry *other = dictFind(src[j].dict,dictGetEntryKey(de));
+                    dictEntry *other;
+
+                    /* If it's the same dictionary don't lookup as we are not
+                     * in the context of a safe iterator. It's the same
+                     * dictionary so we are sure the element is inside.
+                     * This happens on SINTERSTORE dest 2 mykey mykey. */
+                    if (src[j].dict == src[0].dict) {
+                        other = de;
+                    } else {
+                        other = dictFind(src[j].dict,dictGetEntryKey(de));
+                    }
+
                     if (other) {
                         value = src[j].weight * zunionInterDictValue(other);
                         zunionInterAggregate(&score,value,aggregate);
@@ -729,10 +744,19 @@ void zunionInterGenericCommand(redisClient *c, robj *dstkey, int op) {
                 /* because the zsets are sorted by size, its only possible
                  * for sets at larger indices to hold this entry */
                 for (j = (i+1); j < setnum; j++) {
-                    dictEntry *other = dictFind(src[j].dict,dictGetEntryKey(de));
-                    if (other) {
-                        value = src[j].weight * zunionInterDictValue(other);
+                    /* It is not safe to access the zset we are
+                     * iterating, so explicitly check for equal object. */
+                    if (src[j].dict == src[i].dict) {
+                        value = src[i].weight * zunionInterDictValue(de);
                         zunionInterAggregate(&score,value,aggregate);
+                    } else {
+                        dictEntry *other;
+
+                        other = dictFind(src[j].dict,dictGetEntryKey(de));
+                        if (other) {
+                            value = src[j].weight * zunionInterDictValue(other);
+                            zunionInterAggregate(&score,value,aggregate);
+                        }
                     }
                 }
 
