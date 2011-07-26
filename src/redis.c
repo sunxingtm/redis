@@ -1494,12 +1494,6 @@ sds genRedisInfoString(void) {
         );
     }
 
-#ifdef _WIN32
-            info = sdscatprintf(info,"%s%d=%llu",
-                (j == ZMALLOC_MAX_ALLOC_STAT) ? ">=" : "",
-                j,(unsigned long long)count);           
-#else            
-#endif            
     for (j = 0; j < server.dbnum; j++) {
         long long keys, vkeys;
 

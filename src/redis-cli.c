@@ -664,10 +664,17 @@ static void repl() {
     if (isatty(fileno(stdin))) {
         history = 1;
 
+#ifdef _WIN32
+        if (getenv("USERPROFILE") != NULL) {
+            historyfile = sdscatprintf(sdsempty(),"%s\\.rediscli_history",getenv("USERPROFILE"));
+            linenoiseHistoryLoad(historyfile);
+        }
+#else
         if (getenv("HOME") != NULL) {
             historyfile = sdscatprintf(sdsempty(),"%s/.rediscli_history",getenv("HOME"));
             linenoiseHistoryLoad(historyfile);
         }
+#endif
     }
 
     cliRefreshPrompt();
@@ -774,14 +781,8 @@ int main(int argc, char **argv) {
     };
 
     atexit((void(*)(void)) WSACleanup);
-
-    if (getenv("USERPROFILE") != NULL) {
-        config.historyfile = malloc(256);
-        snprintf(config.historyfile,256,"%s\\.rediscli_history",getenv("USERPROFILE"));
-        linenoiseHistoryLoad(config.historyfile);
-    }
-#else
 #endif
+
     firstarg = parseOptions(argc,argv);
     argc -= firstarg;
     argv += firstarg;

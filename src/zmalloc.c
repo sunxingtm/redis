@@ -61,16 +61,13 @@
 #ifdef _WIN32
 #define update_zmalloc_stat_alloc(__n,__size) do { \
     size_t _n = (__n); \
-    size_t _stat_slot = (__size < ZMALLOC_MAX_ALLOC_STAT) ? __size : ZMALLOC_MAX_ALLOC_STAT; \
     if (_n&(sizeof(size_t)-1)) _n += sizeof(size_t)-(_n&(sizeof(size_t)-1)); \
     if (zmalloc_thread_safe) { \
         pthread_mutex_lock(&used_memory_mutex);  \
         used_memory += _n; \
-        zmalloc_allocations[_stat_slot]++; \
         pthread_mutex_unlock(&used_memory_mutex); \
     } else { \
         used_memory += _n; \
-        zmalloc_allocations[_stat_slot]++; \
     } \
 } while(0)
 
