@@ -1,5 +1,31 @@
 #include "redis.h"
-#include <sys/uio.h>
+#ifdef _WIN32
+  #include "win32fixes.h"
+#else
+  #include <sys/uio.h>
+#endif
+
+#ifdef _WIN32
+
+struct iovec {
+        unsigned long iov_len;
+        char *iov_base;
+};
+
+static inline int writev(int sock, struct iovec *iov, int nvecs)
+{
+    DWORD ret;
+    if (WSASend(sock, (LPWSABUF)iov, nvecs, &ret, 0, NULL, NULL) == 0) {
+        return ret;
+    }
+
+    errno = WSAGetLastError();
+    if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+       errno = EAGAIN;
+
+    return -1;
+}
+#endif 
 
 void *dupClientReplyValue(void *o) {
     incrRefCount((robj*)o);
@@ -19,7 +45,11 @@ redisClient *createClient(int fd) {
     if (aeCreateFileEvent(server.el,fd,AE_READABLE,
         readQueryFromClient, c) == AE_ERR)
     {
+#ifdef _WIN32
+        closesocket(fd);
+#else
         close(fd);
+#endif 
         zfree(c);
         return NULL;
     }
@@ -279,6 +309,29 @@ void *addDeferredMultiBulkLength(redisClient *c) {
     return listLast(c->reply);
 }
 
+#ifdef _WIN64
+/* Populate the length object and try glueing it to the next chunk. */
+void setDeferredMultiBulkLength(redisClient *c, void *node, long long length) {
+    listNode *ln = (listNode*)node;
+    robj *len, *next;
+
+    /* Abort when *node is NULL (see addDeferredMultiBulkLength). */
+    if (node == NULL) return;
+
+    len = listNodeValue(ln);
+    len->ptr = sdscatprintf(sdsempty(),"*%lld\r\n",(long long)length);
+
+    if (ln->next != NULL) {
+        next = listNodeValue(ln->next);
+
+        /* Only glue when the next node is non-NULL (an sds in this case) */
+        if (next->ptr != NULL) {
+            len->ptr = sdscatlen(len->ptr,next->ptr,sdslen(next->ptr));
+            listDelNode(c->reply,ln->next);
+        }
+    }
+}
+#else 
 /* Populate the length object and try glueing it to the next chunk. */
 void setDeferredMultiBulkLength(redisClient *c, void *node, long length) {
     listNode *ln = (listNode*)node;
@@ -299,6 +352,7 @@ void setDeferredMultiBulkLength(redisClient *c, void *node, long length) {
         }
     }
 }
+#endif
 
 /* Add a duble as a bulk reply */
 void addReplyDouble(redisClient *c, double d) {
@@ -341,8 +395,11 @@ void addReplyBulkLen(redisClient *c, robj *obj) {
     if (obj->encoding == REDIS_ENCODING_RAW) {
         len = sdslen(obj->ptr);
     } else {
+#ifdef _WIN64
+        long long n = (long long)obj->ptr;
+#else
         long n = (long)obj->ptr;
-
+#endif        
         /* Compute how many bytes will take this integer as a radix 10 string */
         len = 1;
         if (n < 0) {
@@ -392,7 +449,11 @@ static void acceptCommonHandler(int fd) {
     redisClient *c;
     if ((c = createClient(fd)) == NULL) {
         redisLog(REDIS_WARNING,"Error allocating resoures for the client");
+#ifdef _WIN32
+        closesocket(fd); /* May be already closed, just ingore errors */
+#else
         close(fd); /* May be already closed, just ingore errors */
+#endif         
         return;
     }
     /* If maxclient directive is set and this is one client more... close the
@@ -403,9 +464,14 @@ static void acceptCommonHandler(int fd) {
         char *err = "-ERR max number of clients reached\r\n";
 
         /* That's a best effort error message, don't check write errors */
+#ifdef _WIN32
+        if (send((SOCKET)c->fd,err,(int)strlen(err),0) == SOCKET_ERROR) {
+        }
+#else
         if (write(c->fd,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
+#endif         
         freeClient(c);
         return;
     }
@@ -478,7 +544,11 @@ void freeClient(redisClient *c) {
     aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
     listRelease(c->reply);
     freeClientArgv(c);
+#ifdef _WIN32
+    closesocket(c->fd);
+#else
     close(c->fd);
+#endif     
     /* Remove from the list of clients */
     ln = listSearchKey(server.clients,c);
     redisAssert(ln != NULL);
@@ -561,8 +631,17 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
                 /* Don't reply to a master */
                 nwritten = c->bufpos - c->sentlen;
             } else {
+#ifdef _WIN32
+                nwritten = send((SOCKET)fd,c->buf+c->sentlen,c->bufpos-c->sentlen,0);
+                if (nwritten == -1) {
+                    errno = WSAGetLastError();
+                    if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+                        errno = EAGAIN;
+                }
+#else
                 nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
-                if (nwritten <= 0) break;
+#endif
+            if (nwritten <= 0) break;
             }
             c->sentlen += nwritten;
             totwritten += nwritten;
@@ -586,7 +665,16 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
                 /* Don't reply to a master */
                 nwritten = objlen - c->sentlen;
             } else {
-                nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
+#ifdef _WIN32
+            nwritten = send((SOCKET)fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen, 0);
+            if (nwritten == -1) {
+                errno = WSAGetLastError();
+                if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK))
+                    errno = EAGAIN;
+            }
+#else
+            nwritten = write(fd, ((char*)o->ptr)+c->sentlen,objlen-c->sentlen);
+#endif
                 if (nwritten <= 0) break;
             }
             c->sentlen += nwritten;
@@ -842,7 +930,24 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(mask);
 
+#ifdef _WIN32
+    nread = recv((SOCKET)fd, buf, REDIS_IOBUF_LEN, 0);
+    if (nread < 0) {
+        errno = WSAGetLastError();
+        if (errno == WSAECONNRESET) {
+            /* Windows fix: Not an error, intercept it.  */
+            redisLog(REDIS_VERBOSE, "Client closed connection");
+            freeClient(c);
+            return;
+        } else if ((errno == ENOENT) || (errno == WSAEWOULDBLOCK)) {
+            /* Windows fix: Intercept winsock slang for EAGAIN */
+            errno = EAGAIN;
+            nread = -1; /* Winsock can send ENOENT instead EAGAIN */
+        }
+    }
+#else
     nread = read(fd, buf, REDIS_IOBUF_LEN);
+#endif 
     if (nread == -1) {
         if (errno == EAGAIN) {
             nread = 0;

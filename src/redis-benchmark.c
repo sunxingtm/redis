@@ -41,6 +41,7 @@
 
 #ifdef _WIN32
   #include "win32fixes.h"
+  #include "inttypes.h"  
   int fmode = _O_BINARY;
 #endif
 

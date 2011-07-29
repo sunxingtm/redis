@@ -1389,12 +1389,10 @@ sds genRedisInfoString(void) {
             (unsigned long long) zmalloc_used_memory(),
             hmem,
             (unsigned long long)zmalloc_get_rss(),
+            (unsigned long long)server.stat_peak_memory,
+            peak_hmem,
             zmalloc_get_fragmentation_ratio(),
-#ifdef USE_TCMALLOC
-        1,
-#else
-        0,
-#endif
+            ZMALLOC_LIB,
             server.loading,
             server.appendonly,
             (long long) server.dirty,
@@ -1411,6 +1409,7 @@ sds genRedisInfoString(void) {
             (unsigned long long) server.hash_max_zipmap_value,
             (long) dictSize(server.pubsub_channels),
             (unsigned int)listLength(server.pubsub_patterns),
+            (long long)server.stat_fork_time,            
             (int) (server.vm_enabled != 0),
             server.masterhost == 0 ? "master" : "slave"
         #else
@@ -1428,10 +1427,10 @@ sds genRedisInfoString(void) {
             zmalloc_used_memory(),
             hmem,
             zmalloc_get_rss(),
-        server.stat_peak_memory,
-        peak_hmem,
+            server.stat_peak_memory,
+            peak_hmem,
             zmalloc_get_fragmentation_ratio(),
-        ZMALLOC_LIB,
+            ZMALLOC_LIB,
             server.loading,
             server.appendonly,
             server.dirty,
@@ -1448,7 +1447,7 @@ sds genRedisInfoString(void) {
             server.hash_max_zipmap_value,
             dictSize(server.pubsub_channels),
             listLength(server.pubsub_patterns),
-        server.stat_fork_time,
+            server.stat_fork_time,
             server.vm_enabled != 0,
             server.masterhost == NULL ? "master" : "slave"
         #endif
