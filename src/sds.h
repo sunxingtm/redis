@@ -33,6 +33,9 @@
 
 #include <sys/types.h>
 #include <stdarg.h>
+#ifdef _MSC_VER
+    #include <stddef.h>
+#endif
 
 typedef char *sds;
 
@@ -66,12 +69,16 @@ sds sdscpylen(sds s, char *t, size_t len);
 sds sdscpy(sds s, char *t);
 
 sds sdscatvprintf(sds s, const char *fmt, va_list ap);
+#ifdef _WIN32 
+  sds sdscatprintf(sds s, const char *fmt, ...);
+#else
 #ifdef __GNUC__
 sds sdscatprintf(sds s, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
 #else
 sds sdscatprintf(sds s, const char *fmt, ...);
 #endif
+#endif /*  _WIN32 */
 
 sds sdstrim(sds s, const char *cset);
 sds sdsrange(sds s, int start, int end);

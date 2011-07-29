@@ -4,6 +4,8 @@
 
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+osname := $(shell uname -rs | cut -f 1-2 -d "." | cut -f 1 -d "-")
+
 OPTIMIZATION?=-O2
 
 CCCOLOR="\033[34m"
@@ -29,9 +31,17 @@ ifeq ($(uname_S),SunOS)
   CCLINK?=-ldl -lnsl -lsocket -lm -lpthread
   DEBUG?=-g -ggdb
 else
+  ifeq ($(osname),MINGW32_NT)
+    CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+    CCLINK?= --stack=4194304 -mthreads
+    LIBS?= -lws2_32
+    DEBUG?= -g -ggdb 
+    CC=gcc
+  else
   CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
   CCLINK?=-lm -pthread
   DEBUG?=-g -rdynamic -ggdb
+  endif  
 endif
 
 ifeq ($(USE_TCMALLOC),yes)
@@ -58,11 +68,11 @@ PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
 INSTALL= cp -p
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o slowlog.o
-BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
-CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
-CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
-CHECKAOFOBJ = redis-check-aof.o
+OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o slowlog.o
+BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
+CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
+CHECKDUMPOBJ = win32fixes.o redis-check-dump.o lzf_c.o lzf_d.o
+CHECKAOFOBJ = win32fixes.o redis-check-aof.o
 
 PRGNAME = redis-server
 BENCHPRGNAME = redis-benchmark
@@ -161,26 +171,23 @@ redis-benchmark.o:
 redis-benchmark: dependencies $(BENCHOBJ)
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)hiredis$(ENDCOLOR)
 	@cd ../deps/hiredis && $(MAKE) static ARCH="$(ARCH)"
-	$(QUIET_LINK)$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
-
+	$(QUIET_LINK)$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK) $(LIBS)
 redis-cli.o:
 	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) $<
 
 redis-cli: dependencies $(CLIOBJ)
-	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) $(ALLOC_LINK)
+	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) $(ALLOC_LINK) $(LIBS)
 
 redis-check-dump.o:
 	$(QUIET_CC)$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 redis-check-dump: $(CHECKDUMPOBJ)
-	$(QUIET_LINK)$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(CCLINK)
-
+	$(QUIET_LINK)$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(CCLINK) $(LIBS)
 redis-check-aof.o:
 	$(QUIET_CC)$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 redis-check-aof: $(CHECKAOFOBJ)
-	$(QUIET_LINK)$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(CCLINK)
-
+	$(QUIET_LINK)$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(CCLINK) $(LIBS)
 redis-server: $(OBJ)
 	$(QUIET_LINK)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK) $(ALLOC_LINK)
 
@@ -190,7 +197,7 @@ redis-server: $(OBJ)
 	$(QUIET_CC)$(CC) -c $(CFLAGS) $(ALLOC_FLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
+	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe
 
 dep:
 	$(CC) -MM *.c -I ../deps/hiredis -I ../deps/linenoise

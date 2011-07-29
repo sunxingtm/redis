@@ -1,4 +1,7 @@
 #include "redis.h"
+#ifdef _WIN32
+   #include <stdio.h>
+#endif
 
 /*-----------------------------------------------------------------------------
  * String Commands
@@ -163,8 +166,13 @@ void getbitCommand(redisClient *c) {
     byte = bitoffset >> 3;
     bit = 7 - (bitoffset & 0x7);
     if (o->encoding != REDIS_ENCODING_RAW) {
+#ifdef _WIN64
+        if (byte < (size_t)ll2string(llbuf,sizeof(llbuf),(long long)o->ptr))
+            bitval = llbuf[byte] & (1 << bit);
+#else
         if (byte < (size_t)ll2string(llbuf,sizeof(llbuf),(long)o->ptr))
             bitval = llbuf[byte] & (1 << bit);
+#endif
     } else {
         if (byte < sdslen(o->ptr))
             bitval = ((char*)o->ptr)[byte] & (1 << bit);
@@ -251,7 +259,11 @@ void getrangeCommand(redisClient *c) {
 
     if (o->encoding == REDIS_ENCODING_INT) {
         str = llbuf;
+#ifdef _WIN64
+        strlen = ll2string(llbuf,sizeof(llbuf),(long long)o->ptr);
+#else
         strlen = ll2string(llbuf,sizeof(llbuf),(long)o->ptr);
+#endif
     } else {
         str = o->ptr;
         strlen = sdslen(str);
@@ -408,6 +420,7 @@ void appendCommand(redisClient *c) {
 
         /* Append the value */
         o->ptr = sdscatlen(o->ptr,append->ptr,sdslen(append->ptr));
+
         totlen = sdslen(o->ptr);
     }
     signalModifiedKey(c->db,c->argv[1]);

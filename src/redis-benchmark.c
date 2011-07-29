@@ -39,6 +39,11 @@
 #include <signal.h>
 #include <assert.h>
 
+#ifdef _WIN32
+  #include "win32fixes.h"
+  int fmode = _O_BINARY;
+#endif
+
 #include "ae.h"
 #include "hiredis.h"
 #include "sds.h"
@@ -142,7 +147,11 @@ static void randomizeClientKey(client c) {
 
     for (i = 0; i < c->randlen; i++) {
         r = random() % config.randomkeys_keyspacelen;
+#ifdef _WIN32
+        snprintf(buf,sizeof(buf),"%012llu",(unsigned long long)r);
+#else
         snprintf(buf,sizeof(buf),"%012zu",r);
+#endif
         memcpy(c->randptr[i],buf,12);
     }
 }
@@ -211,7 +220,11 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     if (sdslen(c->obuf) > c->written) {
         void *ptr = c->obuf+c->written;
+#ifdef _WIN32
+        int nwritten = send(c->context->fd,ptr,sdslen(c->obuf)-c->written, 0);
+#else
         int nwritten = write(c->context->fd,ptr,sdslen(c->obuf)-c->written);
+#endif
         if (nwritten == -1) {
             if (errno != EPIPE)
                 fprintf(stderr, "Writing to socket: %s\n", strerror(errno));
@@ -429,6 +442,10 @@ int main(int argc, const char **argv) {
 
     client c;
 
+#ifdef _WIN32
+    w32initWinSock();
+#endif
+
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
 
@@ -559,5 +576,8 @@ int main(int argc, const char **argv) {
         printf("\n");
     } while(config.loop);
 
+#ifdef _WIN32
+    WSACleanup();
+#endif
     return 0;
 }

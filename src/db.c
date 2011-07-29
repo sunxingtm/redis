@@ -2,6 +2,7 @@
 
 #include <signal.h>
 
+#include "win32fixes.h"
 /*-----------------------------------------------------------------------------
  * C-level DB API
  *----------------------------------------------------------------------------*/
@@ -259,7 +260,11 @@ void keysCommand(redisClient *c) {
     dictEntry *de;
     sds pattern = c->argv[1]->ptr;
     int plen = sdslen(pattern), allkeys;
+#ifdef _WIN32
+    size_t numkeys = 0;
+#else
     unsigned long numkeys = 0;
+#endif
     void *replylen = addDeferredMultiBulkLength(c);
 
     di = dictGetIterator(c->db->dict);
@@ -491,7 +496,7 @@ int expireIfNeeded(redisDb *db, robj *key) {
      * the slave key expiration is controlled by the master that will
      * send us synthesized DEL operations for expired keys.
      *
-     * Still we try to return the right information to the caller, 
+     * Still we try to return the right information to the caller,
      * that is, 0 if we think the key should be still valid, 1 if
      * we think the key is expired at this time. */
     if (server.masterhost != NULL) {

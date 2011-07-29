@@ -6,6 +6,7 @@ OBJ = net.o hiredis.o sds.o async.o
 BINS = hiredis-example hiredis-test
 
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+osname := $(shell uname -rs | cut -f 1-2 -d "." | cut -f 1 -d "-")
 OPTIMIZATION?=-O3
 ifeq ($(uname_S),SunOS)
   CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -fPIC -Wall -W -D__EXTENSIONS__ -D_XPG6 $(ARCH) $(PROF)
@@ -25,6 +26,15 @@ ifeq ($(uname_S),Darwin)
   DYLIB_MAKE_CMD?=libtool -dynamic -o ${DYLIBNAME} -lm ${DEBUG} - ${OBJ}
   STLIBNAME?=libhiredis.a
   STLIB_MAKE_CMD?=libtool -static -o ${STLIBNAME} - ${OBJ}
+else ifeq ($(osname),MINGW32_NT)
+  CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W -Wwrite-strings $(ARCH) $(PROF)
+  CCLINK?= -mthreads
+  LIBS?= -lws2_32 
+  DYLIBNAME?=libhiredis.dll
+  DYLIB_MAKE_CMD?=gcc -shared -Wl,-soname,${DYLIBNAME} -o ${DYLIBNAME} ${OBJ} ${LIBS}
+  STLIBNAME?=libhiredis.a  
+  STLIB_MAKE_CMD?=ar rcs ${STLIBNAME} ${OBJ}
+  CC=gcc
 else
   CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -fPIC -Wall -W -Wstrict-prototypes -Wwrite-strings $(ARCH) $(PROF)
   CCLINK?=-lm -pthread
@@ -65,10 +75,10 @@ static: ${STLIBNAME}
 
 # Binaries:
 hiredis-example-libevent: example-libevent.c adapters/libevent.h ${DYLIBNAME}
-	$(CC) -o $@ $(CCOPT) $(DEBUG) $(LDFLAGS) -lhiredis -levent example-libevent.c
+	$(CC) -o $@ $(CCOPT) $(DEBUG) $(LDFLAGS) -lhiredis -levent example-libevent.c ${LIBS}
 
 hiredis-example-libev: example-libev.c adapters/libev.h ${DYLIBNAME}
-	$(CC) -o $@ $(CCOPT) $(DEBUG) $(LDFLAGS) -lhiredis -lev example-libev.c
+	$(CC) -o $@ $(CCOPT) $(DEBUG) $(LDFLAGS) -lhiredis -lev example-libev.c ${LIBS}
 
 ifndef AE_DIR
 hiredis-example-ae:
@@ -80,7 +90,7 @@ hiredis-example-ae: example-ae.c adapters/ae.h ${DYLIBNAME}
 endif
 
 hiredis-%: %.o ${DYLIBNAME}
-	$(CC) -o $@ $(CCOPT) $(DEBUG) $(LDFLAGS) -lhiredis $<
+	$(CC) -o $@ $(CCOPT) $(DEBUG) $(LDFLAGS) -lhiredis $< ${LIBS}
 
 test: hiredis-test
 	./hiredis-test
@@ -89,7 +99,7 @@ test: hiredis-test
 	$(CC) -c $(CFLAGS) $(OBJARCH) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf ${DYLIBNAME} ${STLIBNAME} $(BINS) hiredis-example* *.o *.gcda *.gcno *.gcov
+	rm -rf ${DYLIBNAME} ${STLIBNAME} $(BINS) hiredis-example* *.o *.gcda *.gcno *.gcov *.dll *.exe
 
 dep:
 	$(CC) -MM *.c

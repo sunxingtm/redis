@@ -471,6 +471,13 @@ start_server {tags {"zset"}} {
             assert_equal {b 2 c 3} [r zrange zsetc 0 -1 withscores]
         }
 
+    test {ZINTERSTORE regression with two sets, intset+hashtable} {
+        r del seta setb setc
+        r sadd set1 a
+        r sadd set2 10
+        r zinterstore set3 2 set1 set2
+    } {0}
+    
         foreach cmd {ZUNIONSTORE ZINTERSTORE} {
             test "$cmd with +inf/-inf scores - $encoding" {
                 r del zsetinf1 zsetinf2

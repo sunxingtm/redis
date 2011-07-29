@@ -34,6 +34,10 @@
 #include <stdio.h> /* for size_t */
 #include <stdarg.h> /* for va_list */
 #include <sys/time.h> /* for struct timeval */
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <windows.h>
+#endif
 
 #define HIREDIS_MAJOR 0
 #define HIREDIS_MINOR 9

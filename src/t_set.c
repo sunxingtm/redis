@@ -174,6 +174,17 @@ int setTypeRandomElement(robj *setobj, robj **objele, int64_t *llele) {
     return setobj->encoding;
 }
 
+#ifdef _WIN64
+unsigned long long setTypeSize(robj *subject) {
+    if (subject->encoding == REDIS_ENCODING_HT) {
+        return dictSize((dict*)subject->ptr);
+    } else if (subject->encoding == REDIS_ENCODING_INTSET) {
+        return intsetLen((intset*)subject->ptr);
+    } else {
+        redisPanic("Unknown set encoding");
+    }
+}
+#else
 unsigned long setTypeSize(robj *subject) {
     if (subject->encoding == REDIS_ENCODING_HT) {
         return dictSize((dict*)subject->ptr);
@@ -183,6 +194,7 @@ unsigned long setTypeSize(robj *subject) {
         redisPanic("Unknown set encoding");
     }
 }
+#endif
 
 /* Convert the set to specified encoding. The resulting dict (when converting
  * to a hashtable) is presized to hold the number of elements in the original
@@ -377,7 +389,7 @@ void srandmemberCommand(redisClient *c) {
 }
 
 int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
-    return setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2);
+    return (int)(setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2));
 }
 
 void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, robj *dstkey) {
@@ -386,7 +398,11 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
     robj *eleobj, *dstset = NULL;
     int64_t intobj;
     void *replylen = NULL;
+#ifdef _WIN64
+    size_t j, cardinality = 0;
+#else
     unsigned long j, cardinality = 0;
+#endif
     int encoding;
 
     for (j = 0; j < setnum; j++) {
@@ -459,7 +475,12 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, 
                  * a much faster path. */
                 if (eleobj->encoding == REDIS_ENCODING_INT &&
                     sets[j]->encoding == REDIS_ENCODING_INTSET &&
+#ifdef _WIN64
+                    !intsetFind((intset*)sets[j]->ptr,(long long)eleobj->ptr))
+#else
                     !intsetFind((intset*)sets[j]->ptr,(long)eleobj->ptr))
+#endif
+
                 {
                     break;
                 /* else... object to object check is easy as we use the

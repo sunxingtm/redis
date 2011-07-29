@@ -7,7 +7,6 @@ redis-benchmark
 redis-check-dump
 redis-check-aof
 doc-tools
-mkrelease.sh
 release
 myredis.conf
 misc/*
@@ -15,7 +14,18 @@ src/release.h
 appendonly.aof
 SHORT_TERM_TODO
 redis.conf.*
+SciTE.session
+vars.bat
+*.exe
+*.dll
 release.h
 src/transfer.sh
 src/configs
 src/redis-server.dSYM
+*.depend
+*.layout
+*.cbp
+*.script
+*.cbTemp
+bin/*
+*.sublime-project

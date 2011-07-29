@@ -27,6 +27,9 @@ A million repetitions of "a"
 #if defined(__sun)
 #include "solarisfixes.h"
 #endif
+#ifdef _WIN64
+#include <sys/param.h>
+#endif
 #include "sha1.h"
 
 #ifndef BYTE_ORDER
@@ -65,6 +68,12 @@ A million repetitions of "a"
 #else
 #define BYTE_ORDER BIG_ENDIAN
 #endif
+#endif
+
+#ifdef _MSC_VER
+    #ifndef BYTE_ORDER
+    #define BYTE_ORDER LITTLE_ENDIAN
+    #endif
 #endif
 
 #if !defined(BYTE_ORDER) || \

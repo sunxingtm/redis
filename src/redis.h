@@ -16,8 +16,16 @@
 #include <unistd.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <pthread.h>
-#include <syslog.h>
+
+#if defined _WIN32
+  #include <string.h>
+  #include <stdio.h>
+  #include "win32fixes.h"
+#else
+  #include <pthread.h>
+  #include <syslog.h>  
+#endif
+
 
 #include "ae.h"     /* Event driven programming library */
 #include "sds.h"    /* Dynamic safe strings */
@@ -228,7 +236,12 @@
 #define REDIS_MAXMEMORY_NO_EVICTION 5
 
 /* We can print the stacktrace, so our assert is defined this way: */
-#define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#ifdef _WIN32
+  /* Windows fix: I just added two blanks. MinGW GCC bug? */
+  #define redisAssert(_e) ((_e) ? (void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#else
+  #define redisAssert(_e) ((_e)?(void)0 : (_redisAssert(#_e,__FILE__,__LINE__),_exit(1)))
+#endif
 #define redisPanic(_e) _redisPanic(#_e,__FILE__,__LINE__),_exit(1)
 void _redisAssert(char *estr, char *file, int line);
 void _redisPanic(char *msg, char *file, int line);
@@ -272,8 +285,8 @@ typedef struct vmPointer {
     unsigned storage:2; /* REDIS_VM_SWAPPED or REDIS_VM_LOADING */
     unsigned notused:26;
     unsigned int vtype; /* type of the object stored in the swap file */
-    off_t page;         /* the page at witch the object is stored on disk */
-    off_t usedpages;    /* number of pages used on disk */
+    off page;         /* the page at witch the object is stored on disk */
+    off usedpages;    /* number of pages used on disk */
 } vmpointer;
 
 /* Macro used to initalize a Redis object allocated on the stack.
@@ -341,7 +354,7 @@ typedef struct redisClient {
     int replstate;          /* replication state if this is a slave */
     int repldbfd;           /* replication DB file descriptor */
     long repldboff;         /* replication DB file offset */
-    off_t repldbsize;       /* replication DB file size */
+    off repldbsize;       /* replication DB file size */
     multiState mstate;      /* MULTI/EXEC state */
     blockingState bpop;   /* blocking state */
     list *io_keys;          /* Keys this client is waiting to be loaded from the
@@ -387,8 +400,8 @@ struct redisServer {
     dict *commands;             /* Command table hahs table */
     /* RDB / AOF loading information */
     int loading;
-    off_t loading_total_bytes;
-    off_t loading_loaded_bytes;
+    off loading_total_bytes;
+    off loading_loaded_bytes;
     time_t loading_start_time;
     /* Fast pointers to often looked up command */
     struct redisCommand *delCommand, *multiCommand;
@@ -453,7 +466,7 @@ struct redisServer {
     redisClient *master;    /* client that is master for this slave */
     int repl_syncio_timeout; /* timeout for synchronous I/O calls */
     int replstate;          /* replication status if the instance is a slave */
-    off_t repl_transfer_left;  /* bytes left reading .rdb  */
+    off repl_transfer_left;  /* bytes left reading .rdb  */
     int repl_transfer_s;    /* slave -> master SYNC socket */
     int repl_transfer_fd;   /* slave -> master SYNC temp file descriptor */
     char *repl_transfer_tmpfile; /* slave-> master SYNC temp file name */
@@ -477,8 +490,8 @@ struct redisServer {
     /* Virtual memory configuration */
     int vm_enabled;
     char *vm_swap_file;
-    off_t vm_page_size;
-    off_t vm_pages;
+    off vm_page_size;
+    off vm_pages;
     unsigned long long vm_max_memory;
     /* Zip structure config */
     size_t hash_max_zipmap_entries;
@@ -491,8 +504,8 @@ struct redisServer {
     /* Virtual memory state */
     FILE *vm_fp;
     int vm_fd;
-    off_t vm_next_page; /* Next probably empty page */
-    off_t vm_near_pages; /* Number of pages allocated sequentially */
+    off vm_next_page; /* Next probably empty page */
+    off vm_near_pages; /* Number of pages allocated sequentially */
     unsigned char *vm_bitmap; /* Bitmap of free/used pages */
     time_t unixtime;    /* Unix time sampled every second. */
     /* Virtual memory I/O threads stuff */
@@ -580,7 +593,11 @@ typedef struct zskiplistNode {
 
 typedef struct zskiplist {
     struct zskiplistNode *header, *tail;
+#ifdef _WIN64
     unsigned long length;
+#else
+    unsigned long long length;
+#endif
     int level;
 } zskiplist;
 
@@ -602,8 +619,8 @@ typedef struct iojob {
                    vmpointer objct for REDIS_IOREQ_LOAD. */
     robj *val;  /* the value to swap for REDIS_IOREQ_*_SWAP, otherwise this
                  * field is populated by the I/O thread for REDIS_IOREQ_LOAD. */
-    off_t page; /* Swap page where to read/write the object */
-    off_t pages; /* Swap pages needed to save object. PREPARE_SWAP return val */
+    off page; /* Swap page where to read/write the object */
+    off pages; /* Swap pages needed to save object. PREPARE_SWAP return val */
     int canceled; /* True if this command was canceled by blocking side of VM */
     pthread_t thread; /* ID of the thread processing this entry */
 } iojob;
@@ -672,7 +689,11 @@ void resetClient(redisClient *c);
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask);
 void addReply(redisClient *c, robj *obj);
 void *addDeferredMultiBulkLength(redisClient *c);
+#ifdef _WIN64
+void setDeferredMultiBulkLength(redisClient *c, void *node, long long length);
+#else
 void setDeferredMultiBulkLength(redisClient *c, void *node, long length);
+#endif
 void addReplySds(redisClient *c, sds s);
 void processInputBuffer(redisClient *c);
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask);
@@ -695,6 +716,10 @@ void getClientsMaxBuffers(unsigned long *longest_output_list,
                           unsigned long *biggest_input_buffer);
 void rewriteClientCommandVector(redisClient *c, int argc, ...);
 
+#ifdef _WIN32
+void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
+void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
+#else
 #ifdef __GNUC__
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
@@ -704,12 +729,17 @@ void addReplyStatusFormat(redisClient *c, const char *fmt, ...)
 void addReplyErrorFormat(redisClient *c, const char *fmt, ...);
 void addReplyStatusFormat(redisClient *c, const char *fmt, ...);
 #endif
+#endif /*  _WIN32 */
 
 /* List data type */
 void listTypeTryConversion(robj *subject, robj *value);
 void listTypePush(robj *subject, robj *value, int where);
 robj *listTypePop(robj *subject, int where);
+#ifdef _WIN64
+unsigned long long listTypeLength(robj *subject);
+#else
 unsigned long listTypeLength(robj *subject);
+#endif
 listTypeIterator *listTypeInitIterator(robj *subject, int index, unsigned char direction);
 void listTypeReleaseIterator(listTypeIterator *li);
 int listTypeNext(listTypeIterator *li, listTypeEntry *entry);
@@ -767,7 +797,11 @@ unsigned long estimateObjectIdleTime(robj *o);
 int syncWrite(int fd, char *ptr, ssize_t size, int timeout);
 int syncRead(int fd, char *ptr, ssize_t size, int timeout);
 int syncReadLine(int fd, char *ptr, ssize_t size, int timeout);
+#ifdef _WIN64
+int fwriteBulkString(FILE *fp, char *s, unsigned long long len);
+#else
 int fwriteBulkString(FILE *fp, char *s, unsigned long len);
+#endif
 int fwriteBulkDouble(FILE *fp, double d);
 int fwriteBulkLongLong(FILE *fp, long long l);
 int fwriteBulkObject(FILE *fp, robj *obj);
@@ -780,7 +814,7 @@ void replicationCron(void);
 
 /* Generic persistence functions */
 void startLoading(FILE *fp);
-void loadingProgress(off_t pos);
+void loadingProgress(off pos);
 void stopLoading(void);
 
 /* RDB persistence */
@@ -789,8 +823,8 @@ int rdbSaveBackground(char *filename);
 void rdbRemoveTempFile(pid_t childpid);
 int rdbSave(char *filename);
 int rdbSaveObject(FILE *fp, robj *o);
-off_t rdbSavedObjectLen(robj *o);
-off_t rdbSavedObjectPages(robj *o);
+off rdbSavedObjectLen(robj *o);
+off rdbSavedObjectPages(robj *o);
 robj *rdbLoadObject(int type, FILE *fp);
 void backgroundSaveDoneHandler(int statloc);
 int getObjectSaveType(robj *o);
@@ -833,7 +867,7 @@ void populateCommandTable(void);
 
 /* Virtual Memory */
 void vmInit(void);
-void vmMarkPagesFree(off_t page, off_t count);
+void vmMarkPagesFree(off page, off count);
 robj *vmLoadObject(robj *o);
 robj *vmPreviewObject(robj *o);
 int vmSwapOneObjectBlocking(void);
@@ -846,11 +880,11 @@ void unlockThreadedIO(void);
 int vmSwapObjectThreaded(robj *key, robj *val, redisDb *db);
 void freeIOJob(iojob *j);
 void queueIOJob(iojob *j);
-int vmWriteObjectOnSwap(robj *o, off_t page);
-robj *vmReadObjectFromSwap(off_t page, int type);
+int vmWriteObjectOnSwap(robj *o, off page);
+robj *vmReadObjectFromSwap(off page, int type);
 void waitEmptyIOJobsQueue(void);
 void vmReopenSwapFile(void);
-int vmFreePage(off_t page);
+int vmFreePage(off page);
 void zunionInterBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
 void execBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
 int blockClientOnSwappedKeys(redisClient *c);
@@ -868,7 +902,11 @@ void setTypeReleaseIterator(setTypeIterator *si);
 int setTypeNext(setTypeIterator *si, robj **objele, int64_t *llele);
 robj *setTypeNextObject(setTypeIterator *si);
 int setTypeRandomElement(robj *setobj, robj **objele, int64_t *llele);
+#ifdef _WIN64
+unsigned long long setTypeSize(robj *subject);
+#else
 unsigned long setTypeSize(robj *subject);
+#endif
 void setTypeConvert(robj *subject, int enc);
 
 /* Hash data type */
@@ -880,7 +918,11 @@ robj *hashTypeGetObject(robj *o, robj *key);
 int hashTypeExists(robj *o, robj *key);
 int hashTypeSet(robj *o, robj *key, robj *value);
 int hashTypeDelete(robj *o, robj *key);
+#ifdef _WIN64
+unsigned long long hashTypeLength(robj *o);
+#else
 unsigned long hashTypeLength(robj *o);
+#endif
 hashTypeIterator *hashTypeInitIterator(robj *subject);
 void hashTypeReleaseIterator(hashTypeIterator *hi);
 int hashTypeNext(hashTypeIterator *hi);
@@ -894,6 +936,7 @@ int pubsubUnsubscribeAllPatterns(redisClient *c, int notify);
 void freePubsubPattern(void *p);
 int listMatchPubsubPattern(void *a, void *b);
 
+long long ustime(void);
 /* Configuration */
 void loadServerConfig(char *filename);
 void appendServerSaveParams(time_t seconds, int changes);

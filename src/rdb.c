@@ -4,9 +4,18 @@
 #include <math.h>
 #include <sys/types.h>
 #include <sys/time.h>
+
+#ifdef _WIN32
+  #include <errno.h>
+  #include "win32fixes.h"
+#else
+  #include <sys/resource.h>
+  #include <sys/wait.h>
+  #include <arpa/inet.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <arpa/inet.h>
+#endif
 #include <sys/stat.h>
 
 /* Convenience wrapper around fwrite, that returns the number of bytes written
@@ -111,7 +120,7 @@ int rdbSaveLzfStringObject(FILE *fp, unsigned char *s, size_t len) {
     if (len <= 4) return 0;
     outlen = len-4;
     if ((out = zmalloc(outlen+1)) == NULL) return 0;
-    comprlen = lzf_compress(s, len, out, outlen);
+    comprlen = lzf_compress(s, (int)len, out, (unsigned int)outlen);
     if (comprlen == 0) {
         zfree(out);
         return 0;
@@ -121,13 +130,13 @@ int rdbSaveLzfStringObject(FILE *fp, unsigned char *s, size_t len) {
     if ((n = rdbWriteRaw(fp,&byte,1)) == -1) goto writeerr;
     nwritten += n;
 
-    if ((n = rdbSaveLen(fp,comprlen)) == -1) goto writeerr;
+    if ((n = rdbSaveLen(fp,(UINT32)comprlen)) == -1) goto writeerr;
     nwritten += n;
 
-    if ((n = rdbSaveLen(fp,len)) == -1) goto writeerr;
+    if ((n = rdbSaveLen(fp,(UINT32)len)) == -1) goto writeerr;
     nwritten += n;
 
-    if ((n = rdbWriteRaw(fp,out,comprlen)) == -1) goto writeerr;
+    if ((n = rdbWriteRaw(fp,out,(UINT32)comprlen)) == -1) goto writeerr;
     nwritten += n;
 
     zfree(out);
@@ -163,10 +172,10 @@ int rdbSaveRawString(FILE *fp, unsigned char *s, size_t len) {
     }
 
     /* Store verbatim */
-    if ((n = rdbSaveLen(fp,len)) == -1) return -1;
+    if ((n = rdbSaveLen(fp,(UINT32)len)) == -1) return -1;
     nwritten += n;
     if (len > 0) {
-        if (rdbWriteRaw(fp,s,len) == -1) return -1;
+        if (rdbWriteRaw(fp,s,(UINT32)len) == -1) return -1;
         nwritten += len;
     }
     return nwritten;
@@ -196,7 +205,11 @@ int rdbSaveStringObject(FILE *fp, robj *obj) {
     /* Avoid to decode the object, then encode it again, if the
      * object is alrady integer encoded. */
     if (obj->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        return rdbSaveLongLongAsStringObject(fp,(long long)obj->ptr);
+#else
         return rdbSaveLongLongAsStringObject(fp,(long)obj->ptr);
+#endif
     } else {
         redisAssert(obj->encoding == REDIS_ENCODING_RAW);
         return rdbSaveRawString(fp,obj->ptr,sdslen(obj->ptr));
@@ -239,7 +252,7 @@ int rdbSaveDoubleValue(FILE *fp, double val) {
         else
 #endif
             snprintf((char*)buf+1,sizeof(buf)-1,"%.17g",val);
-        buf[0] = strlen((char*)buf+1);
+        buf[0] = (unsigned char)strlen((char*)buf+1);
         len = buf[0]+1;
     }
     return rdbWriteRaw(fp,buf,len);
@@ -284,7 +297,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
             dictIterator *di = dictGetIterator(set);
             dictEntry *de;
 
-            if ((n = rdbSaveLen(fp,dictSize(set))) == -1) return -1;
+            if ((n = rdbSaveLen(fp,(UINT32)dictSize(set))) == -1) return -1;
             nwritten += n;
 
             while((de = dictNext(di)) != NULL) {
@@ -313,7 +326,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
             dictIterator *di = dictGetIterator(zs->dict);
             dictEntry *de;
 
-            if ((n = rdbSaveLen(fp,dictSize(zs->dict))) == -1) return -1;
+        if ((n = rdbSaveLen(fp,(UINT32)dictSize(zs->dict))) == -1) return -1;
             nwritten += n;
 
             while((de = dictNext(di)) != NULL) {
@@ -340,7 +353,7 @@ int rdbSaveObject(FILE *fp, robj *o) {
             dictIterator *di = dictGetIterator(o->ptr);
             dictEntry *de;
 
-            if ((n = rdbSaveLen(fp,dictSize((dict*)o->ptr))) == -1) return -1;
+            if ((n = rdbSaveLen(fp,(UINT32)dictSize((dict*)o->ptr))) == -1) return -1;
             nwritten += n;
 
             while((de = dictNext(di)) != NULL) {
@@ -364,15 +377,15 @@ int rdbSaveObject(FILE *fp, robj *o) {
  * the rdbSaveObject() function. Currently we use a trick to get
  * this length with very little changes to the code. In the future
  * we could switch to a faster solution. */
-off_t rdbSavedObjectLen(robj *o) {
+off rdbSavedObjectLen(robj *o) {
     int len = rdbSaveObject(NULL,o);
     redisAssert(len != -1);
-    return len;
+    return (off) len;
 }
 
 /* Return the number of pages required to save this object in the swap file */
-off_t rdbSavedObjectPages(robj *o) {
-    off_t bytes = rdbSavedObjectLen(o);
+off rdbSavedObjectPages(robj *o) {
+    off bytes = rdbSavedObjectLen(o);
     return (bytes+(server.vm_page_size-1))/server.vm_page_size;
 }
 
@@ -431,7 +444,7 @@ int rdbSave(char *filename) {
             sds keystr = dictGetEntryKey(de);
             robj key, *o = dictGetEntryVal(de);
             time_t expiretime;
-            
+
             initStaticStringObject(key,keystr);
             expiretime = getExpire(db,&key);
 
@@ -507,7 +520,11 @@ int rdbSaveBackground(char *filename) {
     if ((childpid = fork()) == 0) {
         /* Child */
         if (server.vm_enabled) vmReopenSwapFile();
+#ifdef _WIN32
+        if (server.ipfd > 0) closesocket(server.ipfd);
+#else
         if (server.ipfd > 0) close(server.ipfd);
+#endif
         if (server.sofd > 0) close(server.sofd);
         if (rdbSave(filename) == REDIS_OK) {
             _exit(0);
@@ -518,9 +535,27 @@ int rdbSaveBackground(char *filename) {
         /* Parent */
         server.stat_fork_time = ustime()-start;
         if (childpid == -1) {
+#ifdef _WIN32
+            /* On WIN32 fork() is empty function which always return -1 */
+            /* So, on WIN32, let's just save in foreground. */
+            redisLog(REDIS_NOTICE,"Foregroud saving started by pid %d", getpid());
+            server.bgsavechildpid = getpid();
+            updateDictResizePolicy();
+
+            if (rdbSave(filename) == REDIS_OK) {
+                backgroundSaveDoneHandler(0);
+                return REDIS_OK;
+            } else {
+                redisLog(REDIS_WARNING,"Can't save in background: spoon err: %s",
+                    strerror(errno));
+                backgroundSaveDoneHandler(0xff);
+                return REDIS_ERR;
+            }
+#else
             redisLog(REDIS_WARNING,"Can't save in background: fork: %s",
                 strerror(errno));
             return REDIS_ERR;
+#endif
         }
         redisLog(REDIS_NOTICE,"Background saving started by pid %d",childpid);
         server.bgsavechildpid = childpid;
@@ -720,7 +755,7 @@ robj *rdbLoadObject(int type, FILE *fp) {
 
             if (o->encoding == REDIS_ENCODING_ZIPLIST) {
                 dec = getDecodedObject(ele);
-                o->ptr = ziplistPush(o->ptr,dec->ptr,sdslen(dec->ptr),REDIS_TAIL);
+                o->ptr = ziplistPush(o->ptr,dec->ptr,(unsigned int)sdslen(dec->ptr),REDIS_TAIL);
                 decrRefCount(dec);
                 decrRefCount(ele);
             } else {
@@ -834,8 +869,8 @@ robj *rdbLoadObject(int type, FILE *fp) {
                 /* We need raw string objects to add them to the zipmap */
                 deckey = getDecodedObject(key);
                 decval = getDecodedObject(val);
-                zm = zipmapSet(zm,deckey->ptr,sdslen(deckey->ptr),
-                                  decval->ptr,sdslen(decval->ptr),NULL);
+                zm = zipmapSet(zm,deckey->ptr,(unsigned int)sdslen(deckey->ptr),
+                                  decval->ptr,(unsigned int)sdslen(decval->ptr),NULL);
                 o->ptr = zm;
                 decrRefCount(deckey);
                 decrRefCount(decval);
@@ -917,7 +952,7 @@ void startLoading(FILE *fp) {
 }
 
 /* Refresh the loading progress info */
-void loadingProgress(off_t pos) {
+void loadingProgress(off pos) {
     server.loading_loaded_bytes = pos;
 }
 
@@ -937,6 +972,9 @@ int rdbLoad(char *filename) {
     long loops = 0;
 
     fp = fopen(filename,"r");
+#ifdef _WIN32
+    if (!fp) redisLog(REDIS_WARNING,"Open data file %s: %s", filename, strerror(GetLastError()));
+#endif
     if (!fp) return REDIS_ERR;
     if (fread(buf,9,1,fp) == 0) goto eoferr;
     buf[9] = '\0';

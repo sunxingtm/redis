@@ -26,7 +26,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include "redis.h"
 #include "slowlog.h"
 
@@ -37,22 +36,35 @@
 
 #include <time.h>
 #include <signal.h>
-#include <sys/wait.h>
+
+#ifdef _WIN32
+  #include <stdlib.h>
+  #include <string.h>
+  #include <errno.h>
+  #include <stdio.h>
+  #include <locale.h>
+  #include <fcntl.h>
+  #include "win32fixes.h"
+  #define LOG_LOCAL0 0
+#else
+  #include <sys/wait.h>
+  #include <arpa/inet.h>
+  #include <sys/resource.h>
+  #include <sys/uio.h>
+  #include <pthread.h>
+#endif
+
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <arpa/inet.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/uio.h>
 #include <limits.h>
 #include <float.h>
 #include <math.h>
-#include <pthread.h>
-#include <sys/resource.h>
+
 
 /* Our shared "common" objects */
 
@@ -86,8 +98,8 @@ struct redisCommand readonlyCommandTable[] = {
     {"incr",incrCommand,2,REDIS_CMD_DENYOOM,NULL,1,1,1},
     {"decr",decrCommand,2,REDIS_CMD_DENYOOM,NULL,1,1,1},
     {"mget",mgetCommand,-2,0,NULL,1,-1,1},
-    {"rpush",rpushCommand,-3,REDIS_CMD_DENYOOM,NULL,1,1,1},
-    {"lpush",lpushCommand,-3,REDIS_CMD_DENYOOM,NULL,1,1,1},
+    {"rpush",rpushCommand,3,REDIS_CMD_DENYOOM,NULL,1,1,1},
+    {"lpush",lpushCommand,3,REDIS_CMD_DENYOOM,NULL,1,1,1},
     {"rpushx",rpushxCommand,3,REDIS_CMD_DENYOOM,NULL,1,1,1},
     {"lpushx",lpushxCommand,3,REDIS_CMD_DENYOOM,NULL,1,1,1},
     {"linsert",linsertCommand,5,REDIS_CMD_DENYOOM,NULL,1,1,1},
@@ -195,9 +207,10 @@ struct redisCommand readonlyCommandTable[] = {
 };
 
 /*============================ Utility functions ============================ */
-
 void redisLog(int level, const char *fmt, ...) {
+#ifndef _WIN32
     const int syslogLevelMap[] = { LOG_DEBUG, LOG_INFO, LOG_NOTICE, LOG_WARNING };
+#endif
     const char *c = ".-*#";
     time_t now = time(NULL);
     va_list ap;
@@ -219,8 +232,9 @@ void redisLog(int level, const char *fmt, ...) {
     fflush(fp);
 
     if (server.logfile) fclose(fp);
-
+#ifndef _WIN32
     if (server.syslog_enabled) syslog(syslogLevelMap[level], "%s", msg);
+#endif
 }
 
 /* Redis generally does not try to recover from out of memory conditions
@@ -233,6 +247,21 @@ void oom(const char *msg) {
     sleep(1);
     abort();
 }
+
+#ifdef _WIN32
+/* Misc Windows house keeping */
+void win32Cleanup(void) {
+
+    /* Clean critical sections */
+    pthread_mutex_destroy(&server.io_mutex);
+    pthread_mutex_destroy(&server.io_swapfile_mutex);
+
+    zmalloc_free_used_memory_mutex();
+
+    /* Clear winsocks */
+    WSACleanup();
+}
+#endif /* _WIN32 */
 
 /*====================== Hash table type implementation  ==================== */
 
@@ -335,8 +364,11 @@ unsigned int dictEncObjHash(const void *key) {
         if (o->encoding == REDIS_ENCODING_INT) {
             char buf[32];
             int len;
-
+#ifdef _WIN64
+            len = ll2string(buf,32,(long long)o->ptr);
+#else
             len = ll2string(buf,32,(long)o->ptr);
+#endif
             return dictGenHashFunction((unsigned char*)buf, len);
         } else {
             unsigned int hash;
@@ -581,10 +613,18 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Show information about connected clients */
     if (!(loops % 50)) {
+#ifdef _WIN32
+        redisLog(REDIS_VERBOSE,"%d clients connected (%d slaves), %llu bytes in use",
+            listLength(server.clients)-listLength(server.slaves),
+            listLength(server.slaves),
+            (unsigned long long)zmalloc_used_memory()
+#else
         redisLog(REDIS_VERBOSE,"%d clients connected (%d slaves), %zu bytes in use",
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-            zmalloc_used_memory());
+            zmalloc_used_memory()
+#endif
+        );
     }
 
     /* Close connections of timedout clients */
@@ -625,7 +665,13 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, sp->seconds);
                 rdbSaveBackground(server.dbfilename);
-                break;
+#ifdef _WIN32
+               /* On windows this will save in foreground and block */
+               /* Here we are allready saved, and we should return */
+               return 100;
+#else
+               break;
+#endif
             }
          }
 
@@ -735,7 +781,11 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
 void createSharedObjects(void) {
     int j;
-
+#ifdef _WIN32
+    /* Windows fix: Init mutex objects, since they will be used un create object call */
+    pthread_mutex_init(&server.io_mutex,NULL);
+    pthread_mutex_init(&server.io_swapfile_mutex,NULL);
+#endif
     shared.crlf = createObject(REDIS_STRING,sdsnew("\r\n"));
     shared.ok = createObject(REDIS_STRING,sdsnew("+OK\r\n"));
     shared.err = createObject(REDIS_STRING,sdsnew("-ERR\r\n"));
@@ -782,7 +832,11 @@ void createSharedObjects(void) {
     shared.mbulk3 = createStringObject("*3\r\n",4);
     shared.mbulk4 = createStringObject("*4\r\n",4);
     for (j = 0; j < REDIS_SHARED_INTEGERS; j++) {
+#ifdef _WIN64
+        shared.integers[j] = createObject(REDIS_STRING,(void*)(long long)j);
+#else
         shared.integers[j] = createObject(REDIS_STRING,(void*)(long)j);
+#endif
         shared.integers[j]->encoding = REDIS_ENCODING_INT;
     }
 }
@@ -825,7 +879,11 @@ void initServerConfig() {
     server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_LRU;
     server.maxmemory_samples = 3;
     server.vm_enabled = 0;
+#ifdef _WIN32
+    server.vm_swap_file = zstrdup("redis-%p.vm");
+#else
     server.vm_swap_file = zstrdup("/tmp/redis-%p.vm");
+#endif
     server.vm_page_size = 256;          /* 256 bytes per page */
     server.vm_pages = 1024*1024*100;    /* 104 millions of pages */
     server.vm_max_memory = 1024LL*1024*1024*1; /* 1 GB of RAM */
@@ -883,12 +941,38 @@ void initServer() {
     signal(SIGPIPE, SIG_IGN);
     setupSignalHandlers();
 
+#ifndef _WIN32
     if (server.syslog_enabled) {
         openlog(server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,
             server.syslog_facility);
     }
+#endif
 
     server.mainthread = pthread_self();
+#ifdef _WIN32
+     /* Force binary mode on all files */
+    _fmode = _O_BINARY;
+    _setmode(_fileno(stdin),  _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
+
+    /* Set C locale, forcing strtod() to work with dots */
+    setlocale(LC_ALL, "C");
+
+#ifndef _WIN64
+    /* MingGW 32 lacks declaration of RtlGenRandom, MinGw64 don't */
+    HMODULE lib = LoadLibraryA("advapi32.dll");
+    RtlGenRandom = (RtlGenRandomFunc)GetProcAddress(lib, "SystemFunction036");
+#endif
+
+    /* Winsocks must be initialized */
+    if (!w32initWinSock()) {
+        redisLog(REDIS_WARNING, "Can't init WinSock2; Error code: %d", WSAGetLastError());
+        exit(1);
+    };
+    /* ... and cleaned at application exit */
+    atexit((void(*)(void)) win32Cleanup);
+#endif
     server.clients = listCreate();
     server.slaves = listCreate();
     server.monitors = listCreate();
@@ -1192,7 +1276,7 @@ void bytesToHuman(char *s, unsigned long long n) {
 
     if (n < 1024) {
         /* Bytes */
-        sprintf(s,"%lluB",n);
+        sprintf(s,"%luB",(unsigned long)n);
         return;
     } else if (n < (1024*1024)) {
         d = (double)n/(1024);
@@ -1242,10 +1326,17 @@ sds genRedisInfoString(void) {
         "client_longest_output_list:%lu\r\n"
         "client_biggest_input_buf:%lu\r\n"
         "blocked_clients:%d\r\n"
+#ifdef _WIN32
+        "used_memory:%llu\r\n"
+        "used_memory_human:%s\r\n"
+        "used_memory_rss:%llu\r\n"
+        "used_memory_peak:%llu\r\n"        
+#else
         "used_memory:%zu\r\n"
         "used_memory_human:%s\r\n"
         "used_memory_rss:%zu\r\n"
         "used_memory_peak:%zu\r\n"
+#endif
         "used_memory_peak_human:%s\r\n"
         "mem_fragmentation_ratio:%.2f\r\n"
         "mem_allocator:%s\r\n"
@@ -1261,8 +1352,13 @@ sds genRedisInfoString(void) {
         "evicted_keys:%lld\r\n"
         "keyspace_hits:%lld\r\n"
         "keyspace_misses:%lld\r\n"
+#ifdef _WIN32
+        "hash_max_zipmap_entries:%llu\r\n"
+        "hash_max_zipmap_value:%llu\r\n"
+#else
         "hash_max_zipmap_entries:%zu\r\n"
         "hash_max_zipmap_value:%zu\r\n"
+#endif
         "pubsub_channels:%ld\r\n"
         "pubsub_patterns:%u\r\n"
         "latest_fork_usec:%lld\r\n"
@@ -1271,46 +1367,91 @@ sds genRedisInfoString(void) {
         ,REDIS_VERSION,
         redisGitSHA1(),
         strtol(redisGitDirty(),NULL,10) > 0,
+#ifdef _WIN32
+        (sizeof(size_t) == 8) ? "64" : "32",
+#else
         (sizeof(long) == 8) ? "64" : "32",
+#endif
         aeGetApiName(),
         (long) getpid(),
-        uptime,
-        uptime/(3600*24),
-        (unsigned long) server.lruclock,
-        (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000,
-        (float)self_ru.ru_stime.tv_sec+(float)self_ru.ru_stime.tv_usec/1000000,
-        (float)c_ru.ru_utime.tv_sec+(float)c_ru.ru_utime.tv_usec/1000000,
-        (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
-        listLength(server.clients)-listLength(server.slaves),
-        listLength(server.slaves),
-        lol, bib,
-        server.bpop_blocked_clients,
-        zmalloc_used_memory(),
-        hmem,
-        zmalloc_get_rss(),
+        #ifdef _WIN32
+            (long)uptime,
+            (long)(uptime/(3600*24)),
+            (unsigned long) server.lruclock,
+            (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000,
+            (float)self_ru.ru_stime.tv_sec+(float)self_ru.ru_stime.tv_usec/1000000,
+            (float)c_ru.ru_utime.tv_sec+(float)c_ru.ru_utime.tv_usec/1000000,
+            (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
+            listLength(server.clients)-listLength(server.slaves),
+            listLength(server.slaves),
+            lol, bib,            
+            server.bpop_blocked_clients,
+            (unsigned long long) zmalloc_used_memory(),
+            hmem,
+            (unsigned long long)zmalloc_get_rss(),
+            zmalloc_get_fragmentation_ratio(),
+#ifdef USE_TCMALLOC
+        1,
+#else
+        0,
+#endif
+            server.loading,
+            server.appendonly,
+            (long long) server.dirty,
+            (int) (server.bgsavechildpid != -1),
+            (long)(time_t) server.lastsave,
+            (int) (server.bgrewritechildpid != -1),
+            (long long) server.stat_numconnections,
+            (long long) server.stat_numcommands,
+            (long long) server.stat_expiredkeys,
+            (long long) server.stat_evictedkeys,
+            (long long) server.stat_keyspace_hits,
+            (long long) server.stat_keyspace_misses,
+            (unsigned long long) server.hash_max_zipmap_entries,
+            (unsigned long long) server.hash_max_zipmap_value,
+            (long) dictSize(server.pubsub_channels),
+            (unsigned int)listLength(server.pubsub_patterns),
+            (int) (server.vm_enabled != 0),
+            server.masterhost == 0 ? "master" : "slave"
+        #else
+            uptime,
+            uptime/(3600*24),
+            (unsigned long) server.lruclock,
+            (float)self_ru.ru_utime.tv_sec+(float)self_ru.ru_utime.tv_usec/1000000,
+            (float)self_ru.ru_stime.tv_sec+(float)self_ru.ru_stime.tv_usec/1000000,
+            (float)c_ru.ru_utime.tv_sec+(float)c_ru.ru_utime.tv_usec/1000000,
+            (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
+            listLength(server.clients)-listLength(server.slaves),
+            listLength(server.slaves),
+            lol, bib,
+            server.bpop_blocked_clients,
+            zmalloc_used_memory(),
+            hmem,
+            zmalloc_get_rss(),
         server.stat_peak_memory,
         peak_hmem,
-        zmalloc_get_fragmentation_ratio(),
+            zmalloc_get_fragmentation_ratio(),
         ZMALLOC_LIB,
-        server.loading,
-        server.appendonly,
-        server.dirty,
-        server.bgsavechildpid != -1,
-        server.lastsave,
-        server.bgrewritechildpid != -1,
-        server.stat_numconnections,
-        server.stat_numcommands,
-        server.stat_expiredkeys,
-        server.stat_evictedkeys,
-        server.stat_keyspace_hits,
-        server.stat_keyspace_misses,
-        server.hash_max_zipmap_entries,
-        server.hash_max_zipmap_value,
-        dictSize(server.pubsub_channels),
-        listLength(server.pubsub_patterns),
+            server.loading,
+            server.appendonly,
+            server.dirty,
+            server.bgsavechildpid != -1,
+            server.lastsave,
+            server.bgrewritechildpid != -1,
+            server.stat_numconnections,
+            server.stat_numcommands,
+            server.stat_expiredkeys,
+            server.stat_evictedkeys,
+            server.stat_keyspace_hits,
+            server.stat_keyspace_misses,
+            server.hash_max_zipmap_entries,
+            server.hash_max_zipmap_value,
+            dictSize(server.pubsub_channels),
+            listLength(server.pubsub_patterns),
         server.stat_fork_time,
-        server.vm_enabled != 0,
-        server.masterhost == NULL ? "master" : "slave"
+            server.vm_enabled != 0,
+            server.masterhost == NULL ? "master" : "slave"
+        #endif
     );
 
     if (server.appendonly) {
@@ -1387,7 +1528,7 @@ sds genRedisInfoString(void) {
     if (server.loading) {
         double perc;
         time_t eta, elapsed;
-        off_t remaining_bytes = server.loading_total_bytes-
+        off remaining_bytes = server.loading_total_bytes-
                                 server.loading_loaded_bytes;
 
         perc = ((double)server.loading_loaded_bytes /
@@ -1467,7 +1608,11 @@ void freeMemoryIfNeeded(void) {
         int j, k, freed = 0;
 
         for (j = 0; j < server.dbnum; j++) {
+#ifdef _WIN64
+            long long bestval = 0LL; /* just to prevent warning */
+#else
             long bestval = 0; /* just to prevent warning */
+#endif
             sds bestkey = NULL;
             struct dictEntry *de;
             redisDb *db = server.db+j;
@@ -1520,11 +1665,19 @@ void freeMemoryIfNeeded(void) {
             else if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
                 for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
+#ifdef _WIN64
+                    long long thisval;
+#else
                     long thisval;
+#endif
 
                     de = dictGetRandomKey(dict);
                     thiskey = dictGetEntryKey(de);
+#ifdef _WIN64
+                    thisval = (long long) dictGetEntryVal(de);
+#else
                     thisval = (long) dictGetEntryVal(de);
+#endif
 
                     /* Expire sooner (minor expire unix timestamp) is better
                      * candidate for deletion */
@@ -1583,6 +1736,10 @@ void createPidFile(void) {
 }
 
 void daemonize(void) {
+
+#ifdef _WIN32
+  redisLog(REDIS_WARNING,"Windows does not support daemonize. Start Redis as service");
+#else
     int fd;
 
     if (fork() != 0) exit(0); /* parent exits */
@@ -1597,6 +1754,7 @@ void daemonize(void) {
         dup2(fd, STDERR_FILENO);
         if (fd > STDERR_FILENO) close(fd);
     }
+#endif
 }
 
 void version() {

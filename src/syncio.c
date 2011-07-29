@@ -45,7 +45,11 @@ int syncWrite(int fd, char *ptr, ssize_t size, int timeout) {
     timeout++;
     while(size) {
         if (aeWait(fd,AE_WRITABLE,1000) & AE_WRITABLE) {
+#ifdef _WIN32
+            nwritten = send((SOCKET)fd,ptr,size,0);
+#else
             nwritten = write(fd,ptr,size);
+#endif
             if (nwritten == -1) return -1;
             ptr += nwritten;
             size -= nwritten;
@@ -65,7 +69,11 @@ int syncRead(int fd, char *ptr, ssize_t size, int timeout) {
     timeout++;
     while(size) {
         if (aeWait(fd,AE_READABLE,1000) & AE_READABLE) {
+#ifdef _WIN32
+            nread = recv((SOCKET)fd,ptr,size,0);
+#else
             nread = read(fd,ptr,size);
+#endif
             if (nread <= 0) return -1;
             ptr += nread;
             size -= nread;
@@ -102,6 +110,22 @@ int syncReadLine(int fd, char *ptr, ssize_t size, int timeout) {
 
 /* ----------------- Blocking sockets I/O with timeouts --------------------- */
 
+#ifdef _WIN64
+/* Write binary-safe string into a file in the bulkformat
+ * $<count>\r\n<payload>\r\n */
+int fwriteBulkString(FILE *fp, char *s, unsigned long long len) {
+    char cbuf[128];
+    int clen;
+    cbuf[0] = '$';
+    clen = 1+ll2string(cbuf+1,sizeof(cbuf)-1,len);
+    cbuf[clen++] = '\r';
+    cbuf[clen++] = '\n';
+    if (fwrite(cbuf,clen,1,fp) == 0) return 0;
+    if (len > 0 && fwrite(s,len,1,fp) == 0) return 0;
+    if (fwrite("\r\n",2,1,fp) == 0) return 0;
+    return 1;
+}
+#else
 /* Write binary-safe string into a file in the bulkformat
  * $<count>\r\n<payload>\r\n */
 int fwriteBulkString(FILE *fp, char *s, unsigned long len) {
@@ -116,6 +140,7 @@ int fwriteBulkString(FILE *fp, char *s, unsigned long len) {
     if (fwrite("\r\n",2,1,fp) == 0) return 0;
     return 1;
 }
+#endif
 
 /* Write a double value in bulk format $<count>\r\n<payload>\r\n */
 int fwriteBulkDouble(FILE *fp, double d) {
@@ -143,7 +168,11 @@ int fwriteBulkObject(FILE *fp, robj *obj) {
     /* Avoid using getDecodedObject to help copy-on-write (we are often
      * in a child process when this function is called). */
     if (obj->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        return fwriteBulkLongLong(fp,(long long)obj->ptr);
+#else
         return fwriteBulkLongLong(fp,(long)obj->ptr);
+#endif
     } else if (obj->encoding == REDIS_ENCODING_RAW) {
         return fwriteBulkString(fp,obj->ptr,sdslen(obj->ptr));
     } else {

@@ -9,7 +9,7 @@ proc append_to_aof {str} {
 
 proc create_aof {code} {
     upvar fp fp aof_path aof_path
-    set fp [open $aof_path w+]
+    set fp [open $aof_path wb+]
     uplevel 1 $code
     close $fp
 }
@@ -69,7 +69,7 @@ tags {"aof"} {
     }
 
     test "Short read: Utility should be able to fix the AOF" {
-        set result [exec echo y | src/redis-check-aof --fix $aof_path]
+        set result [exec src/redis-check-aof --fix --yes $aof_path]
         assert_match "*Successfully truncated AOF*" $result
     }
 

@@ -5,6 +5,10 @@ By Steve Reid <steve@edmweb.com>
 100% Public Domain
 */
 
+#ifdef _WIN32
+   #include <stdint.h>    
+   #define u_int32_t uint32_t
+#endif
 typedef struct {
     u_int32_t state[5];
     u_int32_t count[2];

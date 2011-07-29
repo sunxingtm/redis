@@ -1,4 +1,5 @@
 #include "redis.h"
+#include <string.h>
 
 /*-----------------------------------------------------------------------------
  * Config file parsing
@@ -123,6 +124,11 @@ void loadServerConfig(char *filename) {
             if (server.syslog_ident) zfree(server.syslog_ident);
             server.syslog_ident = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"syslog-facility") && argc == 2) {
+#ifdef _WIN32
+            // Skip error - just ignore Syslog
+            // err "Syslog is not supported on Windows platform.";
+            // goto loaderr;
+#else
             struct {
                 const char     *name;
                 const int       value;
@@ -151,6 +157,7 @@ void loadServerConfig(char *filename) {
                 err = "Invalid log facility. Must be one of USER or between LOCAL0-LOCAL7";
                 goto loaderr;
             }
+#endif
         } else if (!strcasecmp(argv[0],"databases") && argc == 2) {
             server.dbnum = atoi(argv[1]);
             if (server.dbnum < 1) {

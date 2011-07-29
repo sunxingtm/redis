@@ -59,6 +59,10 @@
  * |1110____| - 1 byte
  *      Integer encoded as int64_t (8 bytes).
  */
+#ifdef _WIN32
+  #include <inttypes.h>
+  #include "win32fixes.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -275,11 +279,11 @@ static void zipSaveInteger(unsigned char *p, int64_t value, unsigned char encodi
     int32_t i32;
     int64_t i64;
     if (encoding == ZIP_INT_16B) {
-        i16 = value;
+        i16 = (int16_t) value;
         memcpy(p,&i16,sizeof(i16));
         memrev16ifbe(p);
     } else if (encoding == ZIP_INT_32B) {
-        i32 = value;
+        i32 = (int32_t) value;
         memcpy(p,&i32,sizeof(i32));
         memrev32ifbe(p);
     } else if (encoding == ZIP_INT_64B) {
@@ -310,6 +314,7 @@ static int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
         ret = i64;
     } else {
         assert(NULL);
+        ret = 0; //makes compiler happy
     }
     return ret;
 }
@@ -391,14 +396,14 @@ static unsigned char *__ziplistCascadeUpdate(unsigned char *zl, unsigned char *p
         if (next.prevrawlensize < rawlensize) {
             /* The "prevlen" field of "next" needs more bytes to hold
              * the raw length of "cur". */
-            offset = p-zl;
+            offset = (unsigned int)(p-zl);
             extra = rawlensize-next.prevrawlensize;
             zl = ziplistResize(zl,curlen+extra);
             p = zl+offset;
 
             /* Current pointer and offset for next element. */
             np = p+rawlen;
-            noffset = np-zl;
+            noffset = (unsigned int)(np-zl);
 
             /* Update tail offset when next element is not the tail element. */
             if ((zl+ZIPLIST_TAIL_OFFSET(zl)) != np)
@@ -442,7 +447,7 @@ static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsig
         deleted++;
     }
 
-    totlen = p-first.p;
+    totlen = (unsigned int)(p-first.p);
     if (totlen > 0) {
         if (p[0] != ZIP_END) {
             /* Tricky: storing the prevlen in this entry might reduce or
@@ -466,11 +471,11 @@ static unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsig
             memmove(first.p,p-nextdiff,ZIPLIST_BYTES(zl)-(p-zl)-1+nextdiff);
         } else {
             /* The entire tail was deleted. No need to move memory. */
-            ZIPLIST_TAIL_OFFSET(zl) = (first.p-zl)-first.prevrawlen;
+            ZIPLIST_TAIL_OFFSET(zl) = (UINT32)((first.p-zl)-first.prevrawlen);
         }
 
         /* Resize and update length */
-        offset = first.p-zl;
+        offset = (int)(first.p-zl);
         zl = ziplistResize(zl, ZIPLIST_BYTES(zl)-totlen+nextdiff);
         ZIPLIST_INCR_LENGTH(zl,-deleted);
         p = zl+offset;
@@ -523,7 +528,7 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
     nextdiff = (p[0] != ZIP_END) ? zipPrevLenByteDiff(p,reqlen) : 0;
 
     /* Store offset because a realloc may change the address of zl. */
-    offset = p-zl;
+    offset = (unsigned int)(p-zl);
     zl = ziplistResize(zl,curlen+reqlen+nextdiff);
     p = zl+offset;
 
@@ -546,13 +551,13 @@ static unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsig
             ZIPLIST_TAIL_OFFSET(zl) += nextdiff;
     } else {
         /* This element will be the new tail. */
-        ZIPLIST_TAIL_OFFSET(zl) = p-zl;
+        ZIPLIST_TAIL_OFFSET(zl) = (UINT32)(p-zl);
     }
 
     /* When nextdiff != 0, the raw length of the next entry has changed, so
      * we need to cascade the update throughout the ziplist */
     if (nextdiff != 0) {
-        offset = p-zl;
+        offset = (unsigned int)(p-zl);
         zl = __ziplistCascadeUpdate(zl,p+reqlen);
         p = zl+offset;
     }
@@ -755,7 +760,11 @@ void ziplistRepr(unsigned char *zl) {
         entry = zipEntry(p);
         printf(
             "{"
+#ifdef _WIN64
+                "addr 0x%08llx, "
+#else
                 "addr 0x%08lx, "
+#endif
                 "index %2d, "
                 "offset %5ld, "
                 "rl: %5u, "
@@ -764,14 +773,20 @@ void ziplistRepr(unsigned char *zl) {
                 "pls: %2u, "
                 "payload %5u"
             "} ",
+#ifdef _WIN64
+            (unsigned long long)p,
+            (int)index,
+            (long) (p-zl),
+#else
             (long unsigned)p,
             index,
             (unsigned long) (p-zl),
+#endif
             entry.headersize+entry.len,
             entry.headersize,
             entry.prevrawlen,
             entry.prevrawlensize,
-            entry.len);
+            (unsigned int)entry.len);
         p += entry.headersize;
         if (ZIP_IS_STR(entry.encoding)) {
             if (entry.len > 40) {

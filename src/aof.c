@@ -5,8 +5,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/resource.h>
-#include <sys/wait.h>
+#ifdef _WIN32
+  #include "win32fixes.h"
+#else
+  #include <sys/resource.h>
+  #include <sys/wait.h>
+#endif
 
 void aofUpdateCurrentSize(void);
 
@@ -22,10 +26,15 @@ void stopAppendOnly(void) {
     server.appendonly = 0;
     /* rewrite operation in progress? kill it, wait child exit */
     if (server.bgrewritechildpid != -1) {
-        int statloc;
-
+#ifdef _WIN32
+        /* Windows placeholder for killing whatever lounched instead of fork()  */
+        w32CeaseAndDesist(server.bgsavechildpid);
+#else
+      int statloc;
+      
         if (kill(server.bgrewritechildpid,SIGKILL) != -1)
             wait3(&statloc,0,NULL);
+#endif
         /* reset the buffer accumulating changes while the child saves */
         sdsfree(server.bgrewritebuf);
         server.bgrewritebuf = sdsempty();
@@ -618,6 +627,31 @@ int rewriteAppendOnlyFileBackground(void) {
     } else {
         /* Parent */
         server.stat_fork_time = ustime()-start;
+#ifdef _WIN32
+        if (childpid == -1) {
+            char tmpfile[256];
+
+            childpid = (int) getpid();
+            snprintf(tmpfile,256,"temp-rewriteaof-bg-%lld.aof", (long long)childpid);
+            server.bgrewritechildpid = childpid;
+            updateDictResizePolicy();
+            server.appendseldb = -1;
+
+            redisLog(REDIS_NOTICE,
+                "Foreground append only file rewriting started by pid %lld",(long long)childpid);
+
+            if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
+                backgroundRewriteDoneHandler(0);
+                return REDIS_OK;
+            } else {
+                backgroundRewriteDoneHandler(0xff);
+                redisLog(REDIS_WARNING,
+                    "Can't rewrite append only file in background: spoon: %s",
+                    strerror(errno));
+                return REDIS_ERR;
+            }
+        }
+#else
         if (childpid == -1) {
             redisLog(REDIS_WARNING,
                 "Can't rewrite append only file in background: fork: %s",
@@ -627,6 +661,7 @@ int rewriteAppendOnlyFileBackground(void) {
         redisLog(REDIS_NOTICE,
             "Background append only file rewriting started by pid %d",childpid);
         server.bgrewritechildpid = childpid;
+#endif
         updateDictResizePolicy();
         /* We set appendseldb to -1 in order to force the next call to the
          * feedAppendOnlyFile() to issue a SELECT command, so the differences
@@ -689,7 +724,12 @@ void backgroundRewriteDoneHandler(int statloc) {
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) server.bgrewritechildpid);
         fd = open(tmpfile,O_WRONLY|O_APPEND);
         if (fd == -1) {
+#ifdef _WIN32
+            /* Windows fix: More info */
+            redisLog(REDIS_WARNING, "Not able to open the temp append only file (%s) produced by the child: %s", tmpfile, strerror(errno));
+#else
             redisLog(REDIS_WARNING, "Not able to open the temp append only file produced by the child: %s", strerror(errno));
+#endif
             goto cleanup;
         }
         /* Flush our data... */
@@ -702,26 +742,39 @@ void backgroundRewriteDoneHandler(int statloc) {
         redisLog(REDIS_NOTICE,"Parent diff flushed into the new append log file with success (%lu bytes)",sdslen(server.bgrewritebuf));
         /* Now our work is to rename the temp file into the stable file. And
          * switch the file descriptor used by the server for append only. */
+#ifdef _WIN32
+        /* Close files before renaming */
+        close(fd);
+        if (server.appendfd != -1) close(server.appendfd);
+#endif
         if (rename(tmpfile,server.appendfilename) == -1) {
             redisLog(REDIS_WARNING,"Can't rename the temp append only file into the stable one: %s", strerror(errno));
+#ifndef _WIN32
             close(fd);
+#endif
             goto cleanup;
         }
         /* Mission completed... almost */
         redisLog(REDIS_NOTICE,"Append only file successfully rewritten.");
         if (server.appendfd != -1) {
             /* If append only is actually enabled... */
+#ifdef _WIN32
+            fd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
+#else
             close(server.appendfd);
+#endif
             server.appendfd = fd;
             if (server.appendfsync != APPENDFSYNC_NO) aof_fsync(fd);
             server.appendseldb = -1; /* Make sure it will issue SELECT */
             redisLog(REDIS_NOTICE,"The new append only file was selected for future appends.");
             aofUpdateCurrentSize();
-            server.auto_aofrewrite_base_size = server.appendonly_current_size;
+            server.auto_aofrewrite_base_size = server.appendonly_current_size;            
+#ifndef _WIN32
         } else {
             /* If append only is disabled we just generate a dump in this
              * format. Why not? */
             close(fd);
+#endif
         }
     } else if (!bysignal && exitcode != 0) {
         redisLog(REDIS_WARNING, "Background append only file rewriting error");

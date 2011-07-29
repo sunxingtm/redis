@@ -1,6 +1,7 @@
 #include "redis.h"
 
 #include <math.h>
+#include <string.h>
 
 /*-----------------------------------------------------------------------------
  * Sorted set API
@@ -376,7 +377,11 @@ static int zslParseRange(robj *min, robj *max, zrangespec *spec) {
      * ZRANGEBYSCORE zset (1.5 (2.5 will match min < x < max
      * ZRANGEBYSCORE zset 1.5 2.5 will instead match min <= x <= max */
     if (min->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        spec->min = (long long)min->ptr;
+#else
         spec->min = (long)min->ptr;
+#endif
     } else {
         if (((char*)min->ptr)[0] == '(') {
             spec->min = strtod((char*)min->ptr+1,&eptr);
@@ -388,7 +393,11 @@ static int zslParseRange(robj *min, robj *max, zrangespec *spec) {
         }
     }
     if (max->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        spec->max = (long long)max->ptr;
+#else
         spec->max = (long)max->ptr;
+#endif
     } else {
         if (((char*)max->ptr)[0] == '(') {
             spec->max = strtod((char*)max->ptr+1,&eptr);
@@ -806,7 +815,7 @@ void zsetConvert(robj *zobj, int encoding) {
 }
 
 /*-----------------------------------------------------------------------------
- * Sorted set commands 
+ * Sorted set commands
  *----------------------------------------------------------------------------*/
 
 /* This generic command implements both ZADD and ZINCRBY. */
@@ -1474,6 +1483,10 @@ void zunionInterGenericCommand(redisClient *c, robj *dstkey, int op) {
         robj *obj = lookupKeyWrite(c->db,c->argv[j]);
         if (obj != NULL) {
             if (obj->type != REDIS_ZSET && obj->type != REDIS_SET) {
+                if (obj->encoding == REDIS_ENCODING_INTSET)
+                    setTypeConvert(obj, REDIS_ENCODING_HT);
+
+                redisAssert(obj->encoding == REDIS_ENCODING_HT);
                 zfree(src);
                 addReply(c,shared.wrongtypeerr);
                 return;
@@ -1770,7 +1783,11 @@ void genericZrangebyscoreCommand(redisClient *c, int reverse, int justcount) {
     robj *emptyreply, *zobj;
     int offset = 0, limit = -1;
     int withscores = 0;
+#ifdef _WIN64
+    size_t rangelen = 0;
+#else
     unsigned long rangelen = 0;
+#endif
     void *replylen = NULL;
     int minidx, maxidx;
 
@@ -1933,7 +1950,7 @@ void genericZrangebyscoreCommand(redisClient *c, int reverse, int justcount) {
     }
 
     if (justcount) {
-        addReplyLongLong(c,(long)rangelen);
+        addReplyLongLong(c,(long long)rangelen);
     } else {
         if (withscores) rangelen *= 2;
         setDeferredMultiBulkLength(c,replylen,rangelen);

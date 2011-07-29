@@ -1,5 +1,7 @@
 #include "redis.h"
-#include <pthread.h>
+#ifndef _WIN32
+  #include <pthread.h>
+#endif
 #include <math.h>
 
 robj *createObject(int type, void *ptr) {
@@ -36,6 +38,11 @@ robj *createStringObjectFromLongLong(long long value) {
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
     } else {
+#ifdef _WIN64
+        o = createObject(REDIS_STRING, NULL);
+        o->encoding = REDIS_ENCODING_INT;
+        o->ptr = (void*)((long long)value);
+#else
         if (value >= LONG_MIN && value <= LONG_MAX) {
             o = createObject(REDIS_STRING, NULL);
             o->encoding = REDIS_ENCODING_INT;
@@ -43,6 +50,7 @@ robj *createStringObjectFromLongLong(long long value) {
         } else {
             o = createObject(REDIS_STRING,sdsfromlonglong(value));
         }
+#endif
     }
     return o;
 }
@@ -238,7 +246,11 @@ int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
 
 /* Try to encode a string object in order to save space */
 robj *tryObjectEncoding(robj *o) {
+#ifdef _WIN64
+    long long value;
+#else
     long value;
+#endif
     sds s = o->ptr;
 
     if (o->encoding != REDIS_ENCODING_RAW)
@@ -253,7 +265,12 @@ robj *tryObjectEncoding(robj *o) {
     redisAssert(o->type == REDIS_STRING);
 
     /* Check if we can represent this string as a long integer */
+#ifdef _WIN64
+    if (isStringRepresentableAsLongLong(s,&value) == REDIS_ERR) return o;
+    if (value < LONG_MIN || value > LONG_MAX) return o;
+#else
     if (!string2l(s,sdslen(s),&value)) return o;
+#endif
 
     /* Ok, this object can be encoded...
      *
@@ -290,8 +307,11 @@ robj *getDecodedObject(robj *o) {
     }
     if (o->type == REDIS_STRING && o->encoding == REDIS_ENCODING_INT) {
         char buf[32];
-
+#ifdef _WIN64
+        ll2string(buf,32,(long long)o->ptr);
+#else
         ll2string(buf,32,(long)o->ptr);
+#endif
         dec = createStringObject(buf,strlen(buf));
         return dec;
     } else {
@@ -314,14 +334,22 @@ int compareStringObjects(robj *a, robj *b) {
 
     if (a == b) return 0;
     if (a->encoding != REDIS_ENCODING_RAW) {
+#ifdef _WIN64
+        ll2string(bufa,sizeof(bufa),(long long) a->ptr);
+#else
         ll2string(bufa,sizeof(bufa),(long) a->ptr);
+#endif
         astr = bufa;
         bothsds = 0;
     } else {
         astr = a->ptr;
     }
     if (b->encoding != REDIS_ENCODING_RAW) {
+#ifdef _WIN64
+        ll2string(bufb,sizeof(bufb),(long long) b->ptr);
+#else
         ll2string(bufb,sizeof(bufb),(long) b->ptr);
+#endif
         bstr = bufb;
         bothsds = 0;
     } else {
@@ -348,8 +376,11 @@ size_t stringObjectLen(robj *o) {
         return sdslen(o->ptr);
     } else {
         char buf[32];
-
+#ifdef _WIN64
+        return ll2string(buf,32,(long long)o->ptr);
+#else
         return ll2string(buf,32,(long)o->ptr);
+#endif
     }
 }
 
@@ -365,7 +396,11 @@ int getDoubleFromObject(robj *o, double *target) {
             value = strtod(o->ptr, &eptr);
             if (eptr[0] != '\0' || isnan(value)) return REDIS_ERR;
         } else if (o->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+            value = (long long)o->ptr;
+#else
             value = (long)o->ptr;
+#endif
         } else {
             redisPanic("Unknown string encoding");
         }
@@ -404,7 +439,11 @@ int getLongLongFromObject(robj *o, long long *target) {
             if (errno == ERANGE && (value == LLONG_MIN || value == LLONG_MAX))
                 return REDIS_ERR;
         } else if (o->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+            value = (long long)o->ptr;
+#else
             value = (long)o->ptr;
+#endif
         } else {
             redisPanic("Unknown string encoding");
         }
@@ -442,7 +481,7 @@ int getLongFromObjectOrReply(redisClient *c, robj *o, long *target, const char *
         return REDIS_ERR;
     }
 
-    *target = value;
+    *target = (long) value;
     return REDIS_OK;
 }
 

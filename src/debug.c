@@ -1,7 +1,14 @@
 #include "redis.h"
 #include "sha1.h"   /* SHA1 is used for DEBUG DIGEST */
 
-#include <arpa/inet.h>
+#ifdef _WIN32
+  #include <stdlib.h>
+  #include <stdio.h>
+  #include <string.h>
+  #include "win32fixes.h"
+#else
+  #include <arpa/inet.h>
+#endif
 
 /* ================================= Debugging ============================== */
 
@@ -17,7 +24,7 @@ void xorDigest(unsigned char *digest, void *ptr, size_t len) {
     int j;
 
     SHA1Init(&ctx);
-    SHA1Update(&ctx,s,len);
+    SHA1Update(&ctx,s,(UINT32)len);
     SHA1Final(hash,&ctx);
 
     for (j = 0; j < 20; j++)
@@ -261,7 +268,7 @@ void debugCommand(redisClient *c) {
         } else {
             vmpointer *vp = (vmpointer*) val;
             addReplyStatusFormat(c,
-                "Value swapped at: page %llu "
+                "+Value swapped at: page %llu "
                 "using %llu pages",
                 (unsigned long long) vp->page,
                 (unsigned long long) vp->usedpages);
