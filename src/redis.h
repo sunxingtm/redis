@@ -344,7 +344,11 @@ typedef struct redisClient {
     struct redisCommand *cmd;
     int reqtype;
     int multibulklen;       /* number of multi bulk arguments left to read */
+#ifdef _WIN64    
+    long long bulklen;      /* length of bulk argument in multi bulk request */
+#else
     long bulklen;           /* length of bulk argument in multi bulk request */
+#endif    
     list *reply;
     int sentlen;
     time_t lastinteraction; /* time of the last interaction, used for timeout */
@@ -353,7 +357,11 @@ typedef struct redisClient {
     int authenticated;      /* when requirepass is non-NULL */
     int replstate;          /* replication state if this is a slave */
     int repldbfd;           /* replication DB file descriptor */
+#ifdef _WIN64
+    long long repldboff;         /* replication DB file offset */
+#else
     long repldboff;         /* replication DB file offset */
+#endif    
     off repldbsize;       /* replication DB file size */
     multiState mstate;      /* MULTI/EXEC state */
     blockingState bpop;   /* blocking state */
@@ -564,7 +572,11 @@ struct redisCommand {
 
 struct redisFunctionSym {
     char *name;
+#ifdef _WIN32
+    size_t pointer;
+#else    
     unsigned long pointer;
+#endif    
 };
 
 typedef struct _redisSortObject {
@@ -710,7 +722,11 @@ void addReplyError(redisClient *c, char *err);
 void addReplyStatus(redisClient *c, char *status);
 void addReplyDouble(redisClient *c, double d);
 void addReplyLongLong(redisClient *c, long long ll);
+#ifdef _WIN64
+void addReplyMultiBulkLen(redisClient *c, long long length);
+#else
 void addReplyMultiBulkLen(redisClient *c, long length);
+#endif
 void *dupClientReplyValue(void *o);
 void getClientsMaxBuffers(unsigned long *longest_output_list,
                           unsigned long *biggest_input_buffer);

@@ -19,7 +19,7 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
     if (state->kqfd == -1) return -1;
     eventLoop->apidata = state;
     
-    return 0;    
+    return 0;
 }
 
 static void aeApiFree(aeEventLoop *eventLoop) {

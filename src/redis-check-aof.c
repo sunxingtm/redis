@@ -178,14 +178,20 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+#ifdef _WIN32
+    FILE *fp = fopen(filename,"r+b");
+    if (fp == NULL) {
+        printf("Cannot open file: %s\n", filename);
+        printf("Error: %s\n", strerror(errno));
+        exit(1);
+    }
+#else
     FILE *fp = fopen(filename,"r+");
     if (fp == NULL) {
         printf("Cannot open file: %s\n", filename);
-#ifdef _WIN32
-        printf("Error: %s\n", strerror(errno));
-#endif
         exit(1);
     }
+#endif    
 
     struct redis_stat sb;
     if (redis_fstat(fileno(fp),&sb) == -1) {

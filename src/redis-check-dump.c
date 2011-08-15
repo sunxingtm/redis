@@ -679,9 +679,12 @@ int main(int argc, char **argv) {
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
-#endif
+
+    fd = open(argv[1], O_RDONLY|_O_BINARY);
+#else
 
     fd = open(argv[1], O_RDONLY);
+#endif    
     if (fd < 1) {
         ERROR("Cannot open file: %s\n", argv[1]);
     }

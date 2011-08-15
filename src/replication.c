@@ -156,8 +156,8 @@ void syncCommand(redisClient *c) {
     c->slaveseldb = 0;
     listAddNodeTail(server.slaves,c);
 #ifdef _WIN32
-   /* Since WIN32 won't fork(),  but instead do Save() we must manualy call this */
-   updateSlavesWaitingBgsave(REDIS_OK);
+    /* Since WIN32 won't fork(),  but instead do Save() we must manualy call this */
+    updateSlavesWaitingBgsave(REDIS_OK);
 #endif
     return;
 }
@@ -305,12 +305,21 @@ void updateSlavesWaitingBgsave(int bgsaveerr) {
                 redisLog(REDIS_WARNING,"SYNC failed. BGSAVE child returned an error");
                 continue;
             }
+#ifdef _WIN32
+            if ((slave->repldbfd = open(server.dbfilename,O_RDONLY|_O_BINARY)) == -1 ||
+                redis_fstat(slave->repldbfd,&buf) == -1) {
+                freeClient(slave);
+                redisLog(REDIS_WARNING,"SYNC failed. Can't open/stat DB after BGSAVE: %s", strerror(errno));
+                continue;
+            }
+#else
             if ((slave->repldbfd = open(server.dbfilename,O_RDONLY)) == -1 ||
                 redis_fstat(slave->repldbfd,&buf) == -1) {
                 freeClient(slave);
                 redisLog(REDIS_WARNING,"SYNC failed. Can't open/stat DB after BGSAVE: %s", strerror(errno));
                 continue;
             }
+#endif
             slave->repldboff = 0;
             slave->repldbsize = buf.st_size;
             slave->replstate = REDIS_REPL_SEND_BULK;
@@ -515,9 +524,16 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     /* Prepare a suitable temp file for bulk transfer */
     while(maxtries--) {
+#ifdef _WIN32
+        snprintf(tmpfile,256,
+            "temp-%d.%lld.rdb",(int)time(NULL),(long long int)getpid());
+        dfd = open(tmpfile,O_CREAT|O_WRONLY|O_EXCL|O_BINARY,_S_IREAD|_S_IWRITE);
+#else
         snprintf(tmpfile,256,
             "temp-%d.%ld.rdb",(int)time(NULL),(long int)getpid());
-        dfd = open(tmpfile,O_CREAT|O_WRONLY|O_EXCL,0644);
+        dfd = open(tmpfile,O_CREAT|O_WRONLY|O_EXCL,0644);            
+#endif            
+
         if (dfd != -1) break;
         sleep(1);
     }

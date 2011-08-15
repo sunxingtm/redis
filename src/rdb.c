@@ -418,8 +418,13 @@ int rdbSave(char *filename) {
     if (server.vm_enabled)
         waitEmptyIOJobsQueue();
 
+#ifdef _WIN32
+    snprintf(tmpfile,256,"temp-%lld.rdb", (long long int) getpid());
+    fp = fopen(tmpfile,"wb");
+#else
     snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
     fp = fopen(tmpfile,"w");
+#endif    
     if (!fp) {
         redisLog(REDIS_WARNING, "Failed saving the DB: %s", strerror(errno));
         return REDIS_ERR;
@@ -971,9 +976,11 @@ int rdbLoad(char *filename) {
     time_t expiretime, now = time(NULL);
     long loops = 0;
 
-    fp = fopen(filename,"r");
 #ifdef _WIN32
+    fp = fopen(filename,"rb");
     if (!fp) redisLog(REDIS_WARNING,"Open data file %s: %s", filename, strerror(GetLastError()));
+#else
+    fp = fopen(filename,"r");
 #endif
     if (!fp) return REDIS_ERR;
     if (fread(buf,9,1,fp) == 0) goto eoferr;

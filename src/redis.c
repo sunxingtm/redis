@@ -1037,7 +1037,11 @@ void initServer() {
         acceptUnixHandler,NULL) == AE_ERR) oom("creating file event");
 
     if (server.appendonly) {
+#ifdef _WIN32
+        server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,0);
+#else
         server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
+#endif
         if (server.appendfd == -1) {
             redisLog(REDIS_WARNING, "Can't open the append-only file: %s",
                 strerror(errno));
@@ -1313,7 +1317,11 @@ sds genRedisInfoString(void) {
         "redis_git_dirty:%d\r\n"
         "arch_bits:%s\r\n"
         "multiplexing_api:%s\r\n"
+#ifdef _WIN64        
+        "process_id:%lld\r\n"
+#else
         "process_id:%ld\r\n"
+#endif        
         "uptime_in_seconds:%ld\r\n"
         "uptime_in_days:%ld\r\n"
         "lru_clock:%ld\r\n"
@@ -1373,7 +1381,11 @@ sds genRedisInfoString(void) {
         (sizeof(long) == 8) ? "64" : "32",
 #endif
         aeGetApiName(),
+#ifdef _WIN64        
+        (long long) getpid(),
+#else
         (long) getpid(),
+#endif        
         #ifdef _WIN32
             (long)uptime,
             (long)(uptime/(3600*24)),
@@ -1729,7 +1741,11 @@ void createPidFile(void) {
     /* Try to write the pid file in a best-effort way. */
     FILE *fp = fopen(server.pidfile,"w");
     if (fp) {
+#ifdef _WIN64
+        fprintf(fp,"%lld\n",(long long int)getpid());
+#else        
         fprintf(fp,"%d\n",(int)getpid());
+#endif        
         fclose(fp);
     }
 }

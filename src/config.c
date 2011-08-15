@@ -36,10 +36,17 @@ void loadServerConfig(char *filename) {
     if (filename[0] == '-' && filename[1] == '\0')
         fp = stdin;
     else {
+#ifdef _WIN32
+        if ((fp = fopen(filename,"rb")) == NULL) {
+            redisLog(REDIS_WARNING, "Fatal error, can't open config file '%s'", filename);
+            exit(1);
+        }
+#else
         if ((fp = fopen(filename,"r")) == NULL) {
             redisLog(REDIS_WARNING, "Fatal error, can't open config file '%s'", filename);
             exit(1);
         }
+#endif
     }
 
     while(fgets(buf,REDIS_CONFIGLINE_MAX+1,fp) != NULL) {

@@ -105,11 +105,11 @@ static int redisCreateSocket(redisContext *c, int type) {
 static int redisSetBlocking(redisContext *c, int fd, int blocking) {
     // If iMode = 0, blocking is enabled;
     // If iMode != 0, non-blocking mode is enabled.
-    u_long flags; 
-  
+    u_long flags;
+
     if (blocking)
         flags = (u_long)0;
-    else 
+    else
         flags = (u_long)1;
 
     if (ioctlsocket((SOCKET)fd, FIONBIO, &flags) == SOCKET_ERROR) {
@@ -219,16 +219,21 @@ static int redisContextWaitReady(redisContext *c, int fd, const struct timeval *
 
         err = 0;
         errlen = sizeof(err);
+#ifdef _WIN32
+        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (char *)&err, &errlen) == SOCKET_ERROR) {
+            __redisSetError(c,REDIS_ERR_IO,
+                sdscatprintf(sdsempty(), "getsockopt(SO_ERROR): %d", WSAGetLastError()));
+            closesocket(fd);
+            return REDIS_ERR;
+        }
+#else
         if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1) {
             __redisSetError(c,REDIS_ERR_IO,
                 sdscatprintf(sdsempty(), "getsockopt(SO_ERROR): %s", strerror(errno)));
-#ifdef _WIN32
-            closesocket(fd);
-#else
             close(fd);
-#endif
             return REDIS_ERR;
         }
+#endif
 
         if (err) {
             errno = err;
@@ -254,6 +259,18 @@ static int redisContextWaitReady(redisContext *c, int fd, const struct timeval *
 }
 
 int redisContextSetTimeout(redisContext *c, struct timeval tv) {
+#ifdef _WIN32
+    if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,(const char *)&tv,sizeof(tv)) == SOCKET_ERROR ) {
+        __redisSetError(c,REDIS_ERR_IO,
+            sdscatprintf(sdsempty(), "setsockopt(SO_RCVTIMEO): %d",  WSAGetLastError()));
+        return REDIS_ERR;
+    }
+    if (setsockopt(c->fd,SOL_SOCKET,SO_SNDTIMEO,(const char *)&tv,sizeof(tv)) == SOCKET_ERROR ) {
+        __redisSetError(c,REDIS_ERR_IO,
+            sdscatprintf(sdsempty(), "setsockopt(SO_SNDTIMEO): %d",  WSAGetLastError()));
+        return REDIS_ERR;
+    }
+#else
     if (setsockopt(c->fd,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv)) == -1) {
         __redisSetError(c,REDIS_ERR_IO,
             sdscatprintf(sdsempty(), "setsockopt(SO_RCVTIMEO): %s", strerror(errno)));
@@ -264,6 +281,7 @@ int redisContextSetTimeout(redisContext *c, struct timeval tv) {
             sdscatprintf(sdsempty(), "setsockopt(SO_SNDTIMEO): %s", strerror(errno)));
         return REDIS_ERR;
     }
+#endif
     return REDIS_OK;
 }
 

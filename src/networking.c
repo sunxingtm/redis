@@ -384,9 +384,15 @@ void addReplyLongLong(redisClient *c, long long ll) {
         _addReplyLongLong(c,ll,':');
 }
 
+#ifdef _WIN64
+void addReplyMultiBulkLen(redisClient *c, long long length) {
+    _addReplyLongLong(c,length,'*');
+}
+#else
 void addReplyMultiBulkLen(redisClient *c, long length) {
     _addReplyLongLong(c,length,'*');
 }
+#endif
 
 /* Create the length prefix of a bulk reply, example: $2234 */
 void addReplyBulkLen(redisClient *c, robj *obj) {

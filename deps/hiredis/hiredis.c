@@ -931,7 +931,7 @@ int redisBufferRead(redisContext *c) {
     int nread = read(c->fd,buf,sizeof(buf));
 #endif
     if (nread == -1) {
-        if (errno == EAGAIN && !(c->flags & REDIS_BLOCK)) {
+        if (errno == EAGAIN /*&& !(c->flags & REDIS_BLOCK)*/) {
             /* Try again later */
         } else {
             __redisSetError(c,REDIS_ERR_IO,NULL);
@@ -971,7 +971,7 @@ int redisBufferWrite(redisContext *c, int *done) {
         nwritten = write(c->fd,c->obuf,sdslen(c->obuf));
 #endif
         if (nwritten == -1) {
-            if (errno == EAGAIN && !(c->flags & REDIS_BLOCK)) {
+            if (errno == EAGAIN /*&& !(c->flags & REDIS_BLOCK)*/) {
                 /* Try again later */
             } else {
                 __redisSetError(c,REDIS_ERR_IO,NULL);

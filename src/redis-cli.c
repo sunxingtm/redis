@@ -88,8 +88,8 @@ static long long mstime(void) {
     long long mst;
 
     gettimeofday(&tv, NULL);
-    mst = ((long)tv.tv_sec)*1000;
-    mst += tv.tv_usec/1000;
+    mst = (long long)((long)tv.tv_sec)*1000;
+    mst += (long long)(tv.tv_usec/1000);
     return mst;
 }
 
@@ -771,9 +771,9 @@ int main(int argc, char **argv) {
 
 #ifdef _WIN32
     _fmode = _O_BINARY;
-    _setmode(_fileno(stdin), _O_BINARY); 
-    _setmode(_fileno(stdout), _O_BINARY); 
-    _setmode(_fileno(stderr), _O_BINARY); 
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stderr), _O_BINARY);
 
     if (!w32initWinSock()) {
       printf("Winsock init error %d", WSAGetLastError());

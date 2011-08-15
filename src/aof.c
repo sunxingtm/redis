@@ -47,7 +47,11 @@ void stopAppendOnly(void) {
 int startAppendOnly(void) {
     server.appendonly = 1;
     server.lastfsync = time(NULL);
+#ifdef _WIN32
+    server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
+#else
     server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
+#endif
     if (server.appendfd == -1) {
         redisLog(REDIS_WARNING,"Used tried to switch on AOF via CONFIG, but I can't open the AOF file: %s",strerror(errno));
         return REDIS_ERR;
@@ -227,7 +231,11 @@ void freeFakeClient(struct redisClient *c) {
  * fatal error an error message is logged and the program exists. */
 int loadAppendOnlyFile(char *filename) {
     struct redisClient *fakeClient;
+#ifdef _WIN32
+    FILE *fp = fopen(filename,"rb");
+#else
     FILE *fp = fopen(filename,"r");
+#endif    
     struct redis_stat sb;
     int appendonly = server.appendonly;
     long loops = 0;
@@ -354,8 +362,13 @@ int rewriteAppendOnlyFile(char *filename) {
 
     /* Note that we have to use a different temp name here compared to the
      * one used by rewriteAppendOnlyFileBackground() function. */
+#ifdef _WIN32
+    snprintf(tmpfile,256,"temp-rewriteaof-%lld.aof", (long long int) getpid());
+    fp = fopen(tmpfile,"wb");
+#else     
     snprintf(tmpfile,256,"temp-rewriteaof-%d.aof", (int) getpid());
     fp = fopen(tmpfile,"w");
+#endif    
     if (!fp) {
         redisLog(REDIS_WARNING, "Failed rewriting the append only file: %s", strerror(errno));
         return REDIS_ERR;
@@ -631,7 +644,7 @@ int rewriteAppendOnlyFileBackground(void) {
         if (childpid == -1) {
             char tmpfile[256];
 
-            childpid = (int) getpid();
+            childpid = getpid();
             snprintf(tmpfile,256,"temp-rewriteaof-bg-%lld.aof", (long long)childpid);
             server.bgrewritechildpid = childpid;
             updateDictResizePolicy();
@@ -759,7 +772,7 @@ void backgroundRewriteDoneHandler(int statloc) {
         if (server.appendfd != -1) {
             /* If append only is actually enabled... */
 #ifdef _WIN32
-            fd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
+            fd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
 #else
             close(server.appendfd);
 #endif
