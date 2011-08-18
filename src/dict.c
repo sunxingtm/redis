@@ -700,7 +700,7 @@ static void _dictPrintStatsHt(dictht *ht) {
     printf(" Chain length distribution:\n");
     for (i = 0; i < DICT_STATS_VECTLEN-1; i++) {
         if (clvector[i] == 0) continue;
-        printf("   %s%ld: %llu (%.02f%%)\n",(i == DICT_STATS_VECTLEN-1)?">= ":"", (long)i, (unsigned long long)clvector[i], ((float)clvector[i]/(float)ht->size)*100.00);
+        printf("   %s%lld: %llu (%.02f%%)\n",(i == DICT_STATS_VECTLEN-1)?">= ":"", (long long)i, (unsigned long long)clvector[i], ((float)clvector[i]/(float)ht->size)*100.00);
     }
 #else
     printf("Hash table stats:\n");

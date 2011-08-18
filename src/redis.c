@@ -519,7 +519,11 @@ void activeExpireCycle(void) {
         /* Continue to expire if at the end of the cycle more than 25%
          * of the keys were expired. */
         do {
+#ifdef _WIN64
+            long long num = dictSize(db->expires);
+#else            
             long num = dictSize(db->expires);
+#endif
             time_t now = time(NULL);
 
             expired = 0;
@@ -1303,7 +1307,11 @@ sds genRedisInfoString(void) {
     int j;
     char hmem[64], peak_hmem[64];
     struct rusage self_ru, c_ru;
+#ifdef _WIN64
+    unsigned long long lol, bib;
+#else
     unsigned long lol, bib;
+#endif
 
     getrusage(RUSAGE_SELF, &self_ru);
     getrusage(RUSAGE_CHILDREN, &c_ru);
@@ -1331,15 +1339,18 @@ sds genRedisInfoString(void) {
         "used_cpu_user_children:%.2f\r\n"
         "connected_clients:%d\r\n"
         "connected_slaves:%d\r\n"
-        "client_longest_output_list:%lu\r\n"
-        "client_biggest_input_buf:%lu\r\n"
-        "blocked_clients:%d\r\n"
 #ifdef _WIN32
+        "client_longest_output_list:%llu\r\n"
+        "client_biggest_input_buf:%llu\r\n"
+        "blocked_clients:%d\r\n"
         "used_memory:%llu\r\n"
         "used_memory_human:%s\r\n"
         "used_memory_rss:%llu\r\n"
         "used_memory_peak:%llu\r\n"        
 #else
+        "client_longest_output_list:%lu\r\n"
+        "client_biggest_input_buf:%lu\r\n"
+        "blocked_clients:%d\r\n"
         "used_memory:%zu\r\n"
         "used_memory_human:%s\r\n"
         "used_memory_rss:%zu\r\n"
@@ -1396,7 +1407,8 @@ sds genRedisInfoString(void) {
             (float)c_ru.ru_stime.tv_sec+(float)c_ru.ru_stime.tv_usec/1000000,
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
-            lol, bib,            
+            (unsigned long long)lol, 
+            (unsigned long long)bib,            
             server.bpop_blocked_clients,
             (unsigned long long) zmalloc_used_memory(),
             hmem,
@@ -1491,12 +1503,21 @@ sds genRedisInfoString(void) {
         );
 
         if (server.replstate == REDIS_REPL_TRANSFER) {
+#ifdef _WIN64
+            info = sdscatprintf(info,
+                "master_sync_left_bytes:%lld\r\n"
+                "master_sync_last_io_seconds_ago:%d\r\n"
+                ,(long long)server.repl_transfer_left,
+                (int)(time(NULL)-server.repl_transfer_lastio)
+            );
+#else
             info = sdscatprintf(info,
                 "master_sync_left_bytes:%ld\r\n"
                 "master_sync_last_io_seconds_ago:%d\r\n"
                 ,(long)server.repl_transfer_left,
                 (int)(time(NULL)-server.repl_transfer_lastio)
             );
+#endif            
         }
 
         if (server.replstate != REDIS_REPL_CONNECTED) {
@@ -1652,7 +1673,11 @@ void freeMemoryIfNeeded(void) {
             {
                 for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
+#ifdef _WIN64
+                    long long thisval;
+#else
                     long thisval;
+#endif
                     robj *o;
 
                     de = dictGetRandomKey(dict);

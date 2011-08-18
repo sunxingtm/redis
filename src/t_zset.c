@@ -264,9 +264,9 @@ zskiplistNode *zslLastInRange(zskiplist *zsl, zrangespec range) {
  * Min and mx are inclusive, so a score >= min || score <= max is deleted.
  * Note that this function takes the reference to the hash table view of the
  * sorted set, in order to remove the elements from the hash table too. */
-unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec range, dict *dict) {
+size_t zslDeleteRangeByScore(zskiplist *zsl, zrangespec range, dict *dict) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
-    unsigned long removed = 0;
+    size_t removed = 0;
     int i;
 
     x = zsl->header;
@@ -295,9 +295,9 @@ unsigned long zslDeleteRangeByScore(zskiplist *zsl, zrangespec range, dict *dict
 
 /* Delete all the elements with rank between start and end from the skiplist.
  * Start and end are inclusive. Note that start and end need to be 1-based */
-unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict) {
+size_t zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
-    unsigned long traversed = 0, removed = 0;
+    size_t traversed = 0, removed = 0;
     int i;
 
     x = zsl->header;
@@ -327,9 +327,9 @@ unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned 
  * Returns 0 when the element cannot be found, rank otherwise.
  * Note that the rank is 1-based due to the span of zsl->header to the
  * first element. */
-unsigned long zslGetRank(zskiplist *zsl, double score, robj *o) {
+size_t zslGetRank(zskiplist *zsl, double score, robj *o) {
     zskiplistNode *x;
-    unsigned long rank = 0;
+    size_t rank = 0;
     int i;
 
     x = zsl->header;
@@ -351,9 +351,9 @@ unsigned long zslGetRank(zskiplist *zsl, double score, robj *o) {
 }
 
 /* Finds an element by its rank. The rank argument needs to be 1-based. */
-zskiplistNode* zslGetElementByRank(zskiplist *zsl, unsigned long rank) {
+zskiplistNode* zslGetElementByRank(zskiplist *zsl, size_t rank) {
     zskiplistNode *x;
-    unsigned long traversed = 0;
+    size_t traversed = 0;
     int i;
 
     x = zsl->header;
@@ -687,10 +687,10 @@ unsigned char *zzlInsert(unsigned char *zl, robj *ele, double score) {
     return zl;
 }
 
-unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec range, unsigned long *deleted) {
+unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec range, size_t *deleted) {
     unsigned char *eptr, *sptr;
     double score;
-    unsigned long num = 0;
+    size_t num = 0;
 
     if (deleted != NULL) *deleted = 0;
 
@@ -718,7 +718,7 @@ unsigned char *zzlDeleteRangeByScore(unsigned char *zl, zrangespec range, unsign
 
 /* Delete all the elements with rank between start and end from the skiplist.
  * Start and end are inclusive. Note that start and end need to be 1-based */
-unsigned char *zzlDeleteRangeByRank(unsigned char *zl, unsigned int start, unsigned int end, unsigned long *deleted) {
+unsigned char *zzlDeleteRangeByRank(unsigned char *zl, unsigned int start, unsigned int end, size_t *deleted) {
     unsigned int num = (end-start)+1;
     if (deleted) *deleted = num;
     zl = ziplistDeleteRange(zl,2*(start-1),2*num);
@@ -1032,7 +1032,7 @@ void zremrangebyscoreCommand(redisClient *c) {
     robj *key = c->argv[1];
     robj *zobj;
     zrangespec range;
-    unsigned long deleted;
+    size_t deleted;
 
     /* Parse the range arguments. */
     if (zslParseRange(c->argv[2],c->argv[3],&range) != REDIS_OK) {
@@ -1063,10 +1063,15 @@ void zremrangebyscoreCommand(redisClient *c) {
 void zremrangebyrankCommand(redisClient *c) {
     robj *key = c->argv[1];
     robj *zobj;
+#ifdef _WIN64
+    long long start;
+    long long end;
+#else    
     long start;
     long end;
+#endif    
     int llen;
-    unsigned long deleted;
+    size_t deleted;
 
     if ((getLongFromObjectOrReply(c, c->argv[2], &start, NULL) != REDIS_OK) ||
         (getLongFromObjectOrReply(c, c->argv[3], &end, NULL) != REDIS_OK)) return;
@@ -1323,7 +1328,11 @@ int zuiLongLongFromValue(zsetopval *val) {
 
         if (val->ele != NULL) {
             if (val->ele->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64                
+                val->ell = (long long)val->ele->ptr;
+#else
                 val->ell = (long)val->ele->ptr;
+#endif
                 val->flags |= OPVAL_VALID_LL;
             } else if (val->ele->encoding == REDIS_ENCODING_RAW) {
                 if (string2ll(val->ele->ptr,sdslen(val->ele->ptr),&val->ell))
@@ -1358,7 +1367,11 @@ int zuiBufferFromValue(zsetopval *val) {
     if (val->estr == NULL) {
         if (val->ele != NULL) {
             if (val->ele->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64                
+                val->elen = ll2string((char*)val->_buf,sizeof(val->_buf),(long long)val->ele->ptr);
+#else
                 val->elen = ll2string((char*)val->_buf,sizeof(val->_buf),(long)val->ele->ptr);
+#endif                
                 val->estr = val->_buf;
             } else if (val->ele->encoding == REDIS_ENCODING_RAW) {
                 val->elen = sdslen(val->ele->ptr);
@@ -1672,8 +1685,13 @@ void zrangeGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *zobj;
     int withscores = 0;
+#ifdef _WIN64
+    long long start;
+    long long end;
+#else
     long start;
     long end;
+#endif    
     int llen;
     int rangelen;
 
@@ -2016,8 +2034,13 @@ void zrankGenericCommand(redisClient *c, int reverse) {
     robj *key = c->argv[1];
     robj *ele = c->argv[2];
     robj *zobj;
+#ifdef _WIN64
+    unsigned long long llen;
+    unsigned long long rank;
+#else    
     unsigned long llen;
     unsigned long rank;
+#endif
 
     if ((zobj = lookupKeyReadOrReply(c,key,shared.nullbulk)) == NULL ||
         checkType(c,zobj,REDIS_ZSET)) return;

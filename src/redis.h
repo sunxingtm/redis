@@ -431,7 +431,11 @@ struct redisServer {
     list *slowlog;
     long long slowlog_entry_id;
     long long slowlog_log_slower_than;
+#ifdef _WIN64
+    unsigned long long slowlog_max_len;
+#else    
     unsigned long slowlog_max_len;
+#endif    
     /* Configuration */
     int verbosity;
     int maxidletime;
@@ -606,9 +610,9 @@ typedef struct zskiplistNode {
 typedef struct zskiplist {
     struct zskiplistNode *header, *tail;
 #ifdef _WIN64
-    unsigned long length;
-#else
     unsigned long long length;
+#else
+    unsigned long length;
 #endif
     int level;
 } zskiplist;
@@ -728,8 +732,13 @@ void addReplyMultiBulkLen(redisClient *c, long long length);
 void addReplyMultiBulkLen(redisClient *c, long length);
 #endif
 void *dupClientReplyValue(void *o);
+#ifdef _WIN64
+void getClientsMaxBuffers(unsigned long long *longest_output_list,
+                          unsigned long long *biggest_input_buffer);
+#else
 void getClientsMaxBuffers(unsigned long *longest_output_list,
                           unsigned long *biggest_input_buffer);
+#endif                          
 void rewriteClientCommandVector(redisClient *c, int argc, ...);
 
 #ifdef _WIN32
@@ -799,7 +808,11 @@ robj *createIntsetObject(void);
 robj *createHashObject(void);
 robj *createZsetObject(void);
 robj *createZsetZiplistObject(void);
+#ifdef _WIN64
+int getLongFromObjectOrReply(redisClient *c, robj *o, long long *target, const char *msg);
+#else
 int getLongFromObjectOrReply(redisClient *c, robj *o, long *target, const char *msg);
+#endif
 int checkType(redisClient *c, robj *o, int type);
 int getLongLongFromObjectOrReply(redisClient *c, robj *o, long long *target, const char *msg);
 int getDoubleFromObjectOrReply(redisClient *c, robj *o, double *target, const char *msg);

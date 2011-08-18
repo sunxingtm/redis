@@ -976,6 +976,25 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     processInputBuffer(c);
 }
 
+#ifdef _WIN64
+void getClientsMaxBuffers(unsigned long long *longest_output_list,
+                          unsigned long long *biggest_input_buffer) {
+    redisClient *c;
+    listNode *ln;
+    listIter li;
+    unsigned long long lol = 0, bib = 0;
+
+    listRewind(server.clients,&li);
+    while ((ln = listNext(&li)) != NULL) {
+        c = listNodeValue(ln);
+
+        if (listLength(c->reply) > lol) lol = listLength(c->reply);
+        if (sdslen(c->querybuf) > bib) bib = sdslen(c->querybuf);
+    }
+    *longest_output_list = lol;
+    *biggest_input_buffer = bib;
+}
+#else
 void getClientsMaxBuffers(unsigned long *longest_output_list,
                           unsigned long *biggest_input_buffer) {
     redisClient *c;
@@ -993,6 +1012,7 @@ void getClientsMaxBuffers(unsigned long *longest_output_list,
     *longest_output_list = lol;
     *biggest_input_buffer = bib;
 }
+#endif
 
 void clientCommand(redisClient *c) {
     listNode *ln;

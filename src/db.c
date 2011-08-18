@@ -516,9 +516,13 @@ int expireIfNeeded(redisDb *db, robj *key) {
  * Expires Commands
  *----------------------------------------------------------------------------*/
 
-void expireGenericCommand(redisClient *c, robj *key, robj *param, long offset) {
+void expireGenericCommand(redisClient *c, robj *key, robj *param, ssize_t offset) {
     dictEntry *de;
+#ifdef _WIN64
+    long long seconds;
+#else
     long seconds;
+#endif    
 
     if (getLongFromObjectOrReply(c, param, &seconds, NULL) != REDIS_OK) return;
 

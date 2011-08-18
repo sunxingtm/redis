@@ -974,7 +974,11 @@ int rdbLoad(char *filename) {
     redisDb *db = server.db+0;
     char buf[1024];
     time_t expiretime, now = time(NULL);
+#ifdef _WIN64
+    long long loops = 0;
+#else
     long loops = 0;
+#endif
 
 #ifdef _WIN32
     fp = fopen(filename,"rb");
@@ -1004,11 +1008,19 @@ int rdbLoad(char *filename) {
 
         expiretime = -1;
 
+#ifdef _WIN64
+        /* Serve the clients from time to time */
+        if (!(loops++ % (long long)1000)) {
+            loadingProgress(ftello(fp));
+            aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
+        }
+#else
         /* Serve the clients from time to time */
         if (!(loops++ % 1000)) {
             loadingProgress(ftello(fp));
             aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
         }
+#endif
 
         /* Read type. */
         if ((type = rdbLoadType(fp)) == -1) goto eoferr;

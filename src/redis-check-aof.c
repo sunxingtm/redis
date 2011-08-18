@@ -46,7 +46,11 @@ int readLong(FILE *fp, char prefix, ssize_t *target) {
 }
 
 int readBytes(FILE *fp, char *target, ssize_t length) {
+#ifdef _WIN64
+    long long real;
+#else    
     long real;
+#endif    
     epos = ftell(fp);
     real = fread(target,1,length,fp);
     if (real != length) {

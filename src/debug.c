@@ -302,20 +302,32 @@ void debugCommand(redisClient *c) {
             addReply(c,shared.err);
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"populate") && c->argc == 3) {
+#ifdef _WIN64
+        long long keys, j;
+#else        
         long keys, j;
+#endif        
         robj *key, *val;
         char buf[128];
 
         if (getLongFromObjectOrReply(c, c->argv[2], &keys, NULL) != REDIS_OK)
             return;
         for (j = 0; j < keys; j++) {
+#ifdef _WIN64
+            snprintf(buf,sizeof(buf),"key:%llu",j);
+#else
             snprintf(buf,sizeof(buf),"key:%lu",j);
+#endif
             key = createStringObject(buf,strlen(buf));
             if (lookupKeyRead(c->db,key) != NULL) {
                 decrRefCount(key);
                 continue;
             }
+#ifdef _WIN64
+            snprintf(buf,sizeof(buf),"value:%llu",j);
+#else
             snprintf(buf,sizeof(buf),"value:%lu",j);
+#endif            
             val = createStringObject(buf,strlen(buf));
             dbAdd(c->db,key,val);
             decrRefCount(key);

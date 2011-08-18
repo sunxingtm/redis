@@ -237,7 +237,11 @@ int checkType(redisClient *c, robj *o, int type) {
 int isObjectRepresentableAsLongLong(robj *o, long long *llval) {
     redisAssert(o->type == REDIS_STRING);
     if (o->encoding == REDIS_ENCODING_INT) {
+#ifdef _WIN64
+        if (llval) *llval = (long long) o->ptr;
+#else
         if (llval) *llval = (long) o->ptr;
+#endif        
         return REDIS_OK;
     } else {
         return string2ll(o->ptr,sdslen(o->ptr),llval) ? REDIS_OK : REDIS_ERR;
@@ -267,7 +271,6 @@ robj *tryObjectEncoding(robj *o) {
     /* Check if we can represent this string as a long integer */
 #ifdef _WIN64
     if (isStringRepresentableAsLongLong(s,&value) == REDIS_ERR) return o;
-    if (value < LONG_MIN || value > LONG_MAX) return o;
 #else
     if (!string2l(s,sdslen(s),&value)) return o;
 #endif
@@ -468,6 +471,12 @@ int getLongLongFromObjectOrReply(redisClient *c, robj *o, long long *target, con
     return REDIS_OK;
 }
 
+#ifdef _WIN64
+int getLongFromObjectOrReply(redisClient *c, robj *o, long long *target, const char *msg) {
+
+    return getLongLongFromObjectOrReply(c, o, target, msg);
+}
+#else
 int getLongFromObjectOrReply(redisClient *c, robj *o, long *target, const char *msg) {
     long long value;
 
@@ -484,6 +493,7 @@ int getLongFromObjectOrReply(redisClient *c, robj *o, long *target, const char *
     *target = (long) value;
     return REDIS_OK;
 }
+#endif
 
 char *strEncoding(int encoding) {
     switch(encoding) {

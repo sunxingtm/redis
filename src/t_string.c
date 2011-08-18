@@ -102,7 +102,11 @@ void setbitCommand(redisClient *c) {
     size_t bitoffset;
     int byte, bit;
     int byteval, bitval;
+#ifdef _WIN64
+    long long on;
+#else    
     long on;
+#endif
 
     if (getBitOffsetFromArgument(c,c->argv[2],&bitoffset) != REDIS_OK)
         return;
@@ -183,7 +187,11 @@ void getbitCommand(redisClient *c) {
 
 void setrangeCommand(redisClient *c) {
     robj *o;
+#ifdef _WIN64
+    long long offset;
+#else
     long offset;
+#endif
     sds value = c->argv[3]->ptr;
 
     if (getLongFromObjectOrReply(c,c->argv[2],&offset,NULL) != REDIS_OK)
@@ -246,7 +254,11 @@ void setrangeCommand(redisClient *c) {
 
 void getrangeCommand(redisClient *c) {
     robj *o;
+#ifdef _WIN64
+    long long start, end;
+#else
     long start, end;
+#endif    
     char *str, llbuf[32];
     size_t strlen;
 

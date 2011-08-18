@@ -122,7 +122,11 @@ sds catAppendOnlyGenericCommand(sds buf, int argc, robj **argv) {
     buf = sdscatprintf(buf,"*%d\r\n",argc);
     for (j = 0; j < argc; j++) {
         robj *o = getDecodedObject(argv[j]);
+#ifdef _WIN64
+        buf = sdscatprintf(buf,"$%llu\r\n",(unsigned long long)sdslen(o->ptr));
+#else
         buf = sdscatprintf(buf,"$%lu\r\n",(unsigned long)sdslen(o->ptr));
+#endif        
         buf = sdscatlen(buf,o->ptr,sdslen(o->ptr));
         buf = sdscatlen(buf,"\r\n",2);
         decrRefCount(o);
@@ -238,7 +242,11 @@ int loadAppendOnlyFile(char *filename) {
 #endif    
     struct redis_stat sb;
     int appendonly = server.appendonly;
+#ifdef _WIN64
+    long long loops = 0;
+#else
     long loops = 0;
+#endif    
 
     if (fp && redis_fstat(fileno(fp),&sb) != -1 && sb.st_size == 0) {
         server.appendonly_current_size = 0;
@@ -268,10 +276,17 @@ int loadAppendOnlyFile(char *filename) {
         int force_swapout;
 
         /* Serve the clients from time to time */
+#ifdef _WIN64        
+        if (!(loops++ % (long long)1000)) {
+            loadingProgress(ftello(fp));
+            aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
+        }
+#else
         if (!(loops++ % 1000)) {
             loadingProgress(ftello(fp));
             aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
         }
+#endif
 
         if (fgets(buf,sizeof(buf),fp) == NULL) {
             if (feof(fp))

@@ -82,7 +82,11 @@ void slowlogCommand(redisClient *c) {
     } else if ((c->argc == 2 || c->argc == 3) &&
                !strcasecmp(c->argv[1]->ptr,"get"))
     {
+#ifdef _WIN64
+        long long count = 10, sent = 0;
+#else
         long count = 10, sent = 0;
+#endif        
         listIter li;
         void *totentries;
         listNode *ln;

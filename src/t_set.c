@@ -392,7 +392,7 @@ int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
     return (int)(setTypeSize(*(robj**)s1)-setTypeSize(*(robj**)s2));
 }
 
-void sinterGenericCommand(redisClient *c, robj **setkeys, unsigned long setnum, robj *dstkey) {
+void sinterGenericCommand(redisClient *c, robj **setkeys, size_t setnum, robj *dstkey) {
     robj **sets = zmalloc(sizeof(robj*)*setnum);
     setTypeIterator *si;
     robj *eleobj, *dstset = NULL;

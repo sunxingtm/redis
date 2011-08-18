@@ -886,7 +886,11 @@ int handleClientsWaitingListPush(redisClient *c, robj *key, robj *ele) {
 }
 
 int getTimeoutFromObjectOrReply(redisClient *c, robj *object, time_t *timeout) {
+#ifdef _WIN64
+    long long tval;
+#else    
     long tval;
+#endif    
 
     if (getLongFromObjectOrReply(c,object,&tval,
         "timeout is not an integer or out of range") != REDIS_OK)

@@ -762,11 +762,13 @@ void ziplistRepr(unsigned char *zl) {
             "{"
 #ifdef _WIN64
                 "addr 0x%08llx, "
+                "index %2d, "
+                "offset %5lld, "
 #else
                 "addr 0x%08lx, "
-#endif
                 "index %2d, "
                 "offset %5ld, "
+#endif
                 "rl: %5u, "
                 "hs %2u, "
                 "pl: %5u, "
@@ -776,7 +778,7 @@ void ziplistRepr(unsigned char *zl) {
 #ifdef _WIN64
             (unsigned long long)p,
             (int)index,
-            (long) (p-zl),
+            (long long)(p-zl),
 #else
             (long unsigned)p,
             index,
