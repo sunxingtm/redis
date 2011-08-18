@@ -16,7 +16,11 @@ static int checkStringLength(redisClient *c, long long size) {
 }
 
 void setGenericCommand(redisClient *c, int nx, robj *key, robj *val, robj *expire) {
+#ifdef _WIN64
+    long long seconds = 0;
+#else    
     long seconds = 0; /* initialized to avoid an harmness warning */
+#endif    
 
     if (expire) {
         if (getLongFromObjectOrReply(c, expire, &seconds, NULL) != REDIS_OK)

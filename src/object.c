@@ -270,7 +270,7 @@ robj *tryObjectEncoding(robj *o) {
 
     /* Check if we can represent this string as a long integer */
 #ifdef _WIN64
-    if (isStringRepresentableAsLongLong(s,&value) == REDIS_ERR) return o;
+    if (!string2ll(s,sdslen(s),&value)) return o;
 #else
     if (!string2l(s,sdslen(s),&value)) return o;
 #endif
