@@ -79,7 +79,7 @@
  * ED2 (Clear entire screen)
  *    Sequence: ESC [ 2 J
  *    Effect: clear the whole screen
- * 
+ *
  */
 
 #ifdef _WIN32
@@ -141,7 +141,7 @@ static int win32read(char *c) {
 
             //if (e.dwControlKeyState & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED)) {
                 /* Alt+key ignored */
-            //} else 
+            //} else
             if (e.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) {
 
                 /* Ctrl+Key */
@@ -317,7 +317,7 @@ static int enableRawMode(int fd) {
         }
 
         GetConsoleMode(hIn, &consolemode);
-        SetConsoleMode(hIn, 0);
+        SetConsoleMode(hIn, ENABLE_PROCESSED_INPUT);
 
         /* Cleanup them at exit */
         atexit(linenoiseAtExit);
@@ -810,7 +810,7 @@ int linenoiseHistorySave(char *filename) {
     FILE *fp = fopen(filename,"wb");
 #else
     FILE *fp = fopen(filename,"w");
-#endif    
+#endif
     int j;
 
     if (fp == NULL) return -1;
