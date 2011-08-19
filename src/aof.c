@@ -136,7 +136,7 @@ sds catAppendOnlyGenericCommand(sds buf, int argc, robj **argv) {
 
 sds catAppendOnlyExpireAtCommand(sds buf, robj *key, robj *seconds) {
     int argc = 3;
-    long when;
+    time_t when;
     robj *argv[3];
 
     /* Make sure we can use strtol */
@@ -146,8 +146,13 @@ sds catAppendOnlyExpireAtCommand(sds buf, robj *key, robj *seconds) {
 
     argv[0] = createStringObject("EXPIREAT",8);
     argv[1] = key;
+#ifdef _WIN32    
+    argv[2] = createObject(REDIS_STRING,
+        sdscatprintf(sdsempty(),"%lld",(long long)when));
+#else
     argv[2] = createObject(REDIS_STRING,
         sdscatprintf(sdsempty(),"%ld",when));
+#endif        
     buf = catAppendOnlyGenericCommand(buf, argc, argv);
     decrRefCount(argv[0]);
     decrRefCount(argv[2]);

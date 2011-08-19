@@ -511,6 +511,16 @@ char *strEncoding(int encoding) {
 
 /* Given an object returns the min number of seconds the object was never
  * requested, using an approximated LRU algorithm. */
+#ifdef _WIN64
+unsigned long long estimateObjectIdleTime(robj *o) {
+    if (server.lruclock >= o->lru) {
+        return (server.lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
+    } else {
+        return ((REDIS_LRU_CLOCK_MAX - o->lru) + server.lruclock) *
+                    REDIS_LRU_CLOCK_RESOLUTION;
+    }
+}
+#else 
 unsigned long estimateObjectIdleTime(robj *o) {
     if (server.lruclock >= o->lru) {
         return (server.lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
@@ -519,6 +529,7 @@ unsigned long estimateObjectIdleTime(robj *o) {
                     REDIS_LRU_CLOCK_RESOLUTION;
     }
 }
+#endif
 
 /* This is an helper function for the DEBUG command. We need to lookup keys
  * without any modification of LRU or other parameters. */

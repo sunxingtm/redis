@@ -258,6 +258,15 @@ void debugCommand(redisClient *c) {
             char *strenc;
 
             strenc = strEncoding(val->encoding);
+#ifdef _WIN64
+            addReplyStatusFormat(c,
+                "Value at:%p refcount:%d "
+                "encoding:%s serializedlength:%lld "
+                "lru:%d lru_seconds_idle:%llu",
+                (void*)val, val->refcount,
+                strenc, (long long) rdbSavedObjectLen(val),
+                val->lru, estimateObjectIdleTime(val));
+#else
             addReplyStatusFormat(c,
                 "Value at:%p refcount:%d "
                 "encoding:%s serializedlength:%lld "
@@ -265,6 +274,7 @@ void debugCommand(redisClient *c) {
                 (void*)val, val->refcount,
                 strenc, (long long) rdbSavedObjectLen(val),
                 val->lru, estimateObjectIdleTime(val));
+#endif                
         } else {
             vmpointer *vp = (vmpointer*) val;
             addReplyStatusFormat(c,

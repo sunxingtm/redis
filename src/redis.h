@@ -820,7 +820,11 @@ int getLongLongFromObject(robj *o, long long *target);
 char *strEncoding(int encoding);
 int compareStringObjects(robj *a, robj *b);
 int equalStringObjects(robj *a, robj *b);
+#ifdef _WIN64
+unsigned long long estimateObjectIdleTime(robj *o);
+#else
 unsigned long estimateObjectIdleTime(robj *o);
+#endif
 
 /* Synchronous I/O with timeout */
 int syncWrite(int fd, char *ptr, ssize_t size, int timeout);
