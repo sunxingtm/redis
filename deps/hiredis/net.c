@@ -365,8 +365,10 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port, struct t
 
 int redisContextConnectUnix(redisContext *c, const char *path, struct timeval *timeout) {
 #ifdef _WIN32
-    (void) path;
-    __redisSetError(c,REDIS_ERR_IO,NULL);
+    (void) timeout;
+    __redisSetError(c,REDIS_ERR_IO,
+        sdscatprintf(sdsempty(),"Unix sockets are not suported on Windows platform. (%s)\n", path));
+
     return REDIS_ERR;
 #else
     int s;
