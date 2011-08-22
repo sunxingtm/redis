@@ -569,9 +569,9 @@ typedef struct zskiplistNode {
 typedef struct zskiplist {
     struct zskiplistNode *header, *tail;
 #ifdef _WIN64
-    unsigned long length;
-#else
     unsigned long long length;
+#else
+    unsigned long length;
 #endif
     int level;
 } zskiplist;
