@@ -29,3 +29,4 @@ src/redis-server.dSYM
 *.cbTemp
 bin/*
 *.sublime-project
+*.sublime-workspace
