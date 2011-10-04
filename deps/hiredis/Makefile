@@ -27,7 +27,7 @@ ifeq ($(uname_S),Darwin)
   STLIBNAME?=libhiredis.a
   STLIB_MAKE_CMD?=libtool -static -o ${STLIBNAME} - ${OBJ}
 else ifeq ($(osname),MINGW32_NT)
-  CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W -Wwrite-strings $(ARCH) $(PROF)
+  CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W -D_ISOC99_SOURCE -Wwrite-strings $(ARCH) $(PROF)
   CCLINK?= -mthreads
   LIBS?= -lws2_32 
   DYLIBNAME?=libhiredis.dll
