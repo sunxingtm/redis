@@ -927,57 +927,6 @@ void *IOThreadEntryPoint(void *arg) {
     return NULL; /* never reached */
 }
 
-#ifdef _WIN32
-/* Proxy structure to pass fnuc and arg to thread */
-typedef struct thread_params
-{
-    void *(*func)(void *);
-    void * arg;
-} thread_params;
-
-/* Proxy function by windows thread requirements */
-static unsigned __stdcall win32_proxy_threadproc(void *arg) {
-
-    thread_params *p = (thread_params *) arg;
-    p->func(p->arg);
-
-    /* Dealocate params */
-    zfree(p);
-
-    _endthreadex(0);
-	return 0;
-}
-
-int pthread_create(pthread_t *thread, const void *unused,
-		   void *(*start_routine)(void*), void *arg) {
-
-    REDIS_NOTUSED(unused);
-    HANDLE h;
-    thread_params *params = zmalloc(sizeof(thread_params));
-
-    params->func = start_routine;
-    params->arg  = arg;
-
-    /*  Arguments not supported in this port */
-    if (arg) exit(1);
-
-    REDIS_NOTUSED(arg);
-	h =(HANDLE) _beginthreadex(NULL,  /* Security not used */
-                               REDIS_THREAD_STACK_SIZE, /* Set custom stack size */
-                               win32_proxy_threadproc,  /* calls win32 stdcall proxy */
-                               params, /* real threadproc is passed as paremeter */
-                               STACK_SIZE_PARAM_IS_A_RESERVATION,  /* reserve stack */
-                               thread /* returned thread id */
-                );
-
-	if (!h)
-		return errno;
-
-    CloseHandle(h);
-	return 0;
-}
-#endif
-
 void spawnIOThread(void) {
     pthread_t thread;
     _sigset_t mask, omask;
