@@ -30,6 +30,10 @@
 
 #include "redis.h"
 #include "bio.h"
+#ifdef _WIN32
+  #include "windows.h"
+  #include "win32fixes.h"
+#endif
 
 static pthread_mutex_t bio_mutex[REDIS_BIO_NUM_OPS];
 static pthread_cond_t bio_condvar[REDIS_BIO_NUM_OPS];
@@ -83,7 +87,11 @@ void bioInit(void) {
      * function accepts in order to pass the job ID the thread is
      * responsible of. */
     for (j = 0; j < REDIS_BIO_NUM_OPS; j++) {
+#ifdef _WIN32
+        void *arg = (void*)(size_t) j;
+#else
         void *arg = (void*)(unsigned long) j;
+#endif
         if (pthread_create(&thread,&attr,bioProcessBackgroundJobs,arg) != 0) {
             redisLog(REDIS_WARNING,"Fatal: Can't initialize Background Jobs.");
             exit(1);
@@ -107,7 +115,11 @@ void bioCreateBackgroundJob(int type, void *arg1, void *arg2, void *arg3) {
 
 void *bioProcessBackgroundJobs(void *arg) {
     struct bio_job *job;
+#ifdef _WIN32
+    size_t type = (size_t) arg;
+#else
     unsigned long type = (unsigned long) arg;
+#endif
 
     pthread_detach(pthread_self());
     pthread_mutex_lock(&bio_mutex[type]);
@@ -156,7 +168,7 @@ unsigned long long bioPendingJobsOfType(int type) {
 #if 0 /* We don't use the following code for now, and bioWaitPendingJobsLE
          probably needs a rewrite using conditional variables instead of the
          current implementation. */
-         
+
 
 /* Wait until the number of pending jobs of the specified type are
  * less or equal to the specified number.

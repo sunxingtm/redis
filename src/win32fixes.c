@@ -85,7 +85,7 @@ int kill(pid_t pid, int sig) {
 
 /* Forced write to disk */
 int fsync (int fd) {
-    HANDLE h = (HANDLE) _get_osfhandle (fd);
+    HANDLE h = (HANDLE) _get_osfhandle(fd);
     DWORD err;
 
     if (h == INVALID_HANDLE_VALUE) {
@@ -93,9 +93,9 @@ int fsync (int fd) {
         return -1;
     }
 
-    if (!FlushFileBuffers (h)) {
+    if (!FlushFileBuffers(h)) {
         /* Windows error -> Unix */
-        err = GetLastError ();
+        err = GetLastError();
         switch (err) {
             case ERROR_INVALID_HANDLE:
             errno = EINVAL;
