@@ -11,9 +11,6 @@
   #define WIN32_LEAN_AND_MEAN
   #define NOGDI
   #define __USE_W32_SOCKETS
-  #define __MINGW_FEATURES__ 1
-
- // #define _WIN32_WINNT 0x0501
 
   #include "fmacros.h"
   #include <stdlib.h>
@@ -52,6 +49,13 @@
   #define ftruncate(a,b) replace_ftruncate(a,b)
   int replace_ftruncate(int fd, off64_t length);
 
+  #ifdef __MINGW32__
+    #define strtod    __strtod
+    #define vsnprintf __mingw_vsnprintf
+    #define snprintf  __mingw_snprintf
+    #define printf    __mingw_printf
+  #endif
+
   #define sleep(x) Sleep((x)*1000)
 
   #if defined(_WIN64) || defined(_MSC_VER)
@@ -68,9 +72,6 @@
     #define random() (long)replace_random()
     #define rand() replace_random()
     int replace_random();
-
-    //#define random() (long) abs(rand() * rand())
-    //#define rand() (int) abs(rand() * rand())
   #endif
 
   // Redis calls usleep(1) to give thread some time
@@ -178,14 +179,14 @@
   #endif /*SIG_SETMASK*/
 
 
-struct sigaction {
+  struct sigaction {
     int          sa_flags;
     sigset_t     sa_mask;
     __p_sig_fn_t sa_handler;
     __p_sig_fn_t sa_sigaction;
   };
 
- int sigaction(int sig, struct sigaction *in, struct sigaction *out);
+  int sigaction(int sig, struct sigaction *in, struct sigaction *out);
 
   // Socekts
   #ifndef _MSC_VER
@@ -211,6 +212,7 @@ struct sigaction {
   int replace_rename(const char *src, const char *dest);
 
   //threads avoiding pthread.h
+
   #define pthread_mutex_t CRITICAL_SECTION
   #define pthread_attr_t ssize_t
   #define PTHREAD_MUTEX_INITIALIZER (CRITICAL_SECTION) { 0 }
@@ -224,6 +226,13 @@ struct sigaction {
   #define pthread_mutex_destroy(a) DeleteCriticalSection((a))
   #define pthread_mutex_lock EnterCriticalSection
   #define pthread_mutex_unlock LeaveCriticalSection
+
+  typedef int pthread_mutexattr_t;
+  #define pthread_mutexattr_init(a) (*(a) = 0)
+  #define pthread_mutexattr_destroy(a) do {} while (0)
+  #define pthread_mutexattr_settype(a, t) 0
+  #define PTHREAD_MUTEX_RECURSIVE 0
+
   #define pthread_equal(t1, t2) ((t1) == (t2))
 
   #define pthread_attr_init(x) (*(x) = 0)
@@ -235,6 +244,7 @@ struct sigaction {
   typedef struct {
 	  void *(*start_routine)(void*);
 	  void *arg;
+    DWORD tid;
   } pthread_proxy_t;
 
   int pthread_create(pthread_t *thread, const void *unused,
@@ -242,11 +252,43 @@ struct sigaction {
 
   pthread_t pthread_self(void);
 
-/*
-*   static inline int pthread_exit(void *ret) {
-*	 ExitThread((DWORD)ret);
-*  }
-*/
+  typedef struct {
+        CRITICAL_SECTION waiters_lock;
+        LONG waiters;
+        int was_broadcast;
+        HANDLE sema;
+        HANDLE continue_broadcast;
+  } pthread_cond_t;
+
+  int pthread_cond_init(pthread_cond_t *cond, const void *unused);
+  int pthread_cond_destroy(pthread_cond_t *cond);
+  int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex);
+  int pthread_cond_signal(pthread_cond_t *cond);
+  int pthread_cond_broadcast(pthread_cond_t *cond);
+
+  #define pthread_join(a, b) win32_pthread_join(&(a), (b))
+  int win32_pthread_join(pthread_t *thread, void **value_ptr);
+
+  static inline int pthread_exit(void *ret) {
+     ExitThread((DWORD)ret);
+  }
+
+  // typedef DWORD pthread_key_t;
+  // static inline int pthread_key_create(pthread_key_t *keyp, void (*destructor)(void *value))
+  // {
+  //       return (*keyp = TlsAlloc()) == TLS_OUT_OF_INDEXES ? EAGAIN : 0;
+  // }
+
+  // static inline int pthread_setspecific(pthread_key_t key, const void *value)
+  // {
+  //       return TlsSetValue(key, (void *)value) ? 0 : EINVAL;
+  // }
+
+  // static inline void *pthread_getspecific(pthread_key_t key)
+  // {
+  //       return TlsGetValue(key);
+  // }
+
   int pthread_detach (pthread_t thread);
   int pthread_sigmask(int how, const sigset_t *set, sigset_t *oset);
 
