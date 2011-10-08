@@ -1,9 +1,4 @@
 #include "redis.h"
-
-#ifdef _WIN32
-  #include <stdio.h>
-#endif
-
 #include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -354,9 +349,9 @@ void replicationAbortSyncTransfer(void) {
 
     aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
 #ifdef _WIN32
-    close(server.repl_transfer_s);
-#else
     closesocket(server.repl_transfer_s);
+#else
+    close(server.repl_transfer_s);
 #endif
     close(server.repl_transfer_fd);
     unlink(server.repl_transfer_tmpfile);
