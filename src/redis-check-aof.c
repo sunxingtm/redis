@@ -55,7 +55,7 @@ int readBytes(FILE *fp, char *target, ssize_t length) {
     real = fread(target,1,length,fp);
     if (real != length) {
 #ifdef _WIN32
-        ERROR("Expected to read %lld bytes, got %lld bytes",(__int64)length,(__int64)real);
+        ERROR("Expected to read %lld bytes, got %lld bytes",(long long)length,(long long)real);
 #else
         ERROR("Expected to read %ld bytes, got %ld bytes",length,real);
 #endif
@@ -219,7 +219,8 @@ int main(int argc, char **argv) {
 #endif
             char buf[2];
 #ifdef _WIN32
-            printf("This will shrink the AOF from %lld bytes, with %lld bytes, to %lld bytes\n",(__int64)size,(__int64)diff,(__int64)pos);
+            printf("This will shrink the AOF from %lld bytes, with %lld bytes, to %lld bytes\n",
+              (long long)size,(long long)diff,(long long)pos);
 #else
             printf("This will shrink the AOF from %ld bytes, with %ld bytes, to %ld bytes\n",size,diff,pos);
 #endif

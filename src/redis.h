@@ -17,9 +17,7 @@
 #include <errno.h>
 #include <inttypes.h>
 
-#if defined _WIN32
-  #include <string.h>
-  #include <stdio.h>
+#ifdef _WIN32
   #include "win32fixes.h"
 #else
   #include <pthread.h>

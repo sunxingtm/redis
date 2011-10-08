@@ -2,9 +2,6 @@
 #include "sha1.h"   /* SHA1 is used for DEBUG DIGEST */
 
 #ifdef _WIN32
-  #include <stdlib.h>
-  #include <stdio.h>
-  #include <string.h>
   #include "win32fixes.h"
 #else
   #include <arpa/inet.h>

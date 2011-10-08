@@ -38,7 +38,6 @@
 
 #ifdef _WIN32
   #include "win32fixes.h"
-  #include "redis.h"
 #endif
 
 #include "ae.h"

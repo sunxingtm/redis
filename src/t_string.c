@@ -1,7 +1,4 @@
 #include "redis.h"
-#ifdef _WIN32
-   #include <stdio.h>
-#endif
 
 /*-----------------------------------------------------------------------------
  * String Commands
