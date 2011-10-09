@@ -87,7 +87,7 @@ void computeDatasetDigest(unsigned char *final) {
         redisDb *db = server.db+j;
 
         if (dictSize(db->dict) == 0) continue;
-        di = dictGetIterator(db->dict);
+        di = dictGetSafeIterator(db->dict);
 
         /* hash the DB id, so the same dataset moved in a different
          * DB will lead to a different digest */
@@ -108,6 +108,11 @@ void computeDatasetDigest(unsigned char *final) {
 
             /* Make sure the key is loaded if VM is active */
             o = lookupKeyRead(db,keyobj);
+            if (o == NULL) {
+                /* Key expired on lookup? Try the next one. */
+                decrRefCount(keyobj);
+                continue;
+            }
 
             aux = htonl(o->type);
             mixDigest(digest,&aux,sizeof(aux));
@@ -291,6 +296,12 @@ void debugCommand(redisClient *c) {
             d = sdscatprintf(d, "%02x",digest[j]);
         addReplyStatus(c,d);
         sdsfree(d);
+    } else if (!strcasecmp(c->argv[1]->ptr,"sleep") && c->argc == 3) {
+        double dtime = strtod(c->argv[2]->ptr,NULL);
+        long long utime = dtime*1000000;
+
+        usleep(utime);
+        addReply(c,shared.ok);
     } else {
         addReplyError(c,
             "Syntax error, try DEBUG [SEGFAULT|OBJECT <key>|SWAPIN <key>|SWAPOUT <key>|RELOAD]");

@@ -317,7 +317,7 @@ static int enableRawMode(int fd) {
         }
 
         GetConsoleMode(hIn, &consolemode);
-        SetConsoleMode(hIn, 0);
+        SetConsoleMode(hIn, ENABLE_PROCESSED_INPUT);
 
         /* Cleanup them at exit */
         atexit(linenoiseAtExit);

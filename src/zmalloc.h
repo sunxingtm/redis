@@ -43,8 +43,5 @@ size_t zmalloc_get_rss(void);
 #ifdef _WIN32
 void zmalloc_free_used_memory_mutex(void);
 #endif
-size_t zmalloc_allocations_for_size(size_t size);
-
-#define ZMALLOC_MAX_ALLOC_STAT 256
 
 #endif /* _ZMALLOC_H */

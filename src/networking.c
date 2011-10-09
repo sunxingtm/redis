@@ -61,6 +61,7 @@ redisClient *createClient(int fd) {
     c->reqtype = 0;
     c->argc = 0;
     c->argv = NULL;
+    c->cmd = NULL;
     c->multibulklen = 0;
     c->bulklen = -1;
     c->sentlen = 0;
@@ -90,9 +91,6 @@ redisClient *createClient(int fd) {
 /* Set the event loop to listen for write events on the client's socket.
  * Typically gets called every time a reply is built. */
 int _installWriteEvent(redisClient *c) {
-    /* When CLOSE_AFTER_REPLY is set, no more replies may be added! */
-    redisAssert(!(c->flags & REDIS_CLOSE_AFTER_REPLY));
-
     if (c->fd <= 0) return REDIS_ERR;
     if (c->bufpos == 0 && listLength(c->reply) == 0 &&
         (c->replstate == REDIS_REPL_NONE ||
@@ -118,8 +116,14 @@ robj *dupLastObjectIfNeeded(list *reply) {
     return listNodeValue(ln);
 }
 
+/* -----------------------------------------------------------------------------
+ * Low level functions to add more data to output buffers.
+ * -------------------------------------------------------------------------- */
+
 int _addReplyToBuffer(redisClient *c, char *s, size_t len) {
     size_t available = sizeof(c->buf)-c->bufpos;
+
+    if (c->flags & REDIS_CLOSE_AFTER_REPLY) return REDIS_OK;
 
     /* If there already are entries in the reply list, we cannot
      * add anything more to the static buffer. */
@@ -135,6 +139,9 @@ int _addReplyToBuffer(redisClient *c, char *s, size_t len) {
 
 void _addReplyObjectToList(redisClient *c, robj *o) {
     robj *tail;
+
+    if (c->flags & REDIS_CLOSE_AFTER_REPLY) return;
+
     if (listLength(c->reply) == 0) {
         incrRefCount(o);
         listAddNodeTail(c->reply,o);
@@ -158,6 +165,12 @@ void _addReplyObjectToList(redisClient *c, robj *o) {
  * needed it will be free'd, otherwise it ends up in a robj. */
 void _addReplySdsToList(redisClient *c, sds s) {
     robj *tail;
+
+    if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
+        sdsfree(s);
+        return;
+    }
+
     if (listLength(c->reply) == 0) {
         listAddNodeTail(c->reply,createObject(REDIS_STRING,s));
     } else {
@@ -178,6 +191,9 @@ void _addReplySdsToList(redisClient *c, sds s) {
 
 void _addReplyStringToList(redisClient *c, char *s, size_t len) {
     robj *tail;
+
+    if (c->flags & REDIS_CLOSE_AFTER_REPLY) return;
+
     if (listLength(c->reply) == 0) {
         listAddNodeTail(c->reply,createStringObject(s,len));
     } else {
@@ -194,6 +210,11 @@ void _addReplyStringToList(redisClient *c, char *s, size_t len) {
         }
     }
 }
+
+/* -----------------------------------------------------------------------------
+ * Higher level functions to queue data on the client output buffer.
+ * The following functions are the ones that commands implementations will call.
+ * -------------------------------------------------------------------------- */
 
 void addReply(redisClient *c, robj *obj) {
     if (_installWriteEvent(c) != REDIS_OK) return;
@@ -464,7 +485,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     cfd = anetTcpAccept(server.neterr, fd, cip, &cport);
     if (cfd == AE_ERR) {
-        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        redisLog(REDIS_WARNING,"Accepting client connection: %s", server.neterr);
         return;
     }
     redisLog(REDIS_VERBOSE,"Accepted %s:%d", cip, cport);
@@ -479,7 +500,7 @@ void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     cfd = anetUnixAccept(server.neterr, fd);
     if (cfd == AE_ERR) {
-        redisLog(REDIS_VERBOSE,"Accepting client connection: %s", server.neterr);
+        redisLog(REDIS_WARNING,"Accepting client connection: %s", server.neterr);
         return;
     }
     redisLog(REDIS_VERBOSE,"Accepted connection to %s", server.unixsocket);
@@ -492,6 +513,7 @@ static void freeClientArgv(redisClient *c) {
     for (j = 0; j < c->argc; j++)
         decrRefCount(c->argv[j]);
     c->argc = 0;
+    c->cmd = NULL;
 }
 
 void freeClient(redisClient *c) {
@@ -576,10 +598,16 @@ void freeClient(redisClient *c) {
          * close the connection with all our slaves if we have any, so
          * when we'll resync with the master the other slaves will sync again
          * with us as well. Note that also when the slave is not connected
-         * to the master it will keep refusing connections by other slaves. */
-        while (listLength(server.slaves)) {
-            ln = listFirst(server.slaves);
-            freeClient((redisClient*)ln->value);
+         * to the master it will keep refusing connections by other slaves.
+         *
+         * We do this only if server.masterhost != NULL. If it is NULL this
+         * means the user called SLAVEOF NO ONE and we are freeing our
+         * link with the master, so no need to close link with slaves. */
+        if (server.masterhost != NULL) {
+            while (listLength(server.slaves)) {
+                ln = listFirst(server.slaves);
+                freeClient((redisClient*)ln->value);
+            }
         }
     }
     /* Release memory */
@@ -955,3 +983,27 @@ void getClientsMaxBuffers(unsigned long *longest_output_list,
     *biggest_input_buffer = bib;
 }
 
+void rewriteClientCommandVector(redisClient *c, int argc, ...) {
+    va_list ap;
+    int j;
+    robj **argv; /* The new argument vector */
+
+    argv = zmalloc(sizeof(robj*)*argc);
+    va_start(ap,argc);
+    for (j = 0; j < argc; j++) {
+        robj *a;
+        
+        a = va_arg(ap, robj*);
+        argv[j] = a;
+        incrRefCount(a);
+    }
+    /* We free the objects in the original vector at the end, so we are
+     * sure that if the same objects are reused in the new vector the
+     * refcount gets incremented before it gets decremented. */
+    for (j = 0; j < c->argc; j++) decrRefCount(c->argv[j]);
+    zfree(c->argv);
+    /* Replace argv and argc with our new versions. */
+    c->argv = argv;
+    c->argc = argc;
+    va_end(ap);
+}
