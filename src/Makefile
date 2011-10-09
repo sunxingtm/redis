@@ -27,7 +27,7 @@ ifeq ($(uname_S),SunOS)
 else
   ifeq ($(osname),MINGW32_NT)
     CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
-    CCLINK?= --stack=4194304 -mthreads
+    CCLINK?= -Wl,--stack=4194304 -mthreads
     LIBS?= -lws2_32
     DEBUG?= -g -ggdb 
     CC=gcc
