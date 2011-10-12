@@ -37,6 +37,7 @@
   #define ANET_NOTUSED(V) ((void) V)
 #else
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -487,7 +488,7 @@ int anetTcpServer(char *err, int port, char *bindaddr)
 }
 #endif /* _WIN32 */
 
-int anetUnixServer(char *err, char *path)
+int anetUnixServer(char *err, char *path, mode_t perm)
 {
 #ifdef _WIN32
     ANET_NOTUSED(err);
@@ -505,6 +506,8 @@ int anetUnixServer(char *err, char *path)
     strncpy(sa.sun_path,path,sizeof(sa.sun_path)-1);
     if (anetListen(err,s,(struct sockaddr*)&sa,sizeof(sa)) == ANET_ERR)
         return ANET_ERR;
+    if (perm)
+        chmod(sa.sun_path, perm);
     return s;
 #endif
 }
