@@ -12,10 +12,12 @@
 #define _LARGEFILE_SOURCE
 #define _FILE_OFFSET_BITS 64
 
-#ifdef _WIN64
-  #define off _off64_t
-#else
-  #define off off_t
+#ifdef _WIN32
+  #ifdef _WIN64
+    #define off _off64_t
+  #else
+    #define off off_t
+  #endif
 #endif
 
 #endif

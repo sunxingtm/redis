@@ -493,6 +493,7 @@ int anetUnixServer(char *err, char *path, mode_t perm)
 #ifdef _WIN32
     ANET_NOTUSED(err);
     ANET_NOTUSED(path);
+    ANET_NOTUSED(perm);    
     return ANET_ERR;
 #else
     int s;

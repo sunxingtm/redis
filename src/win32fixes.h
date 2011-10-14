@@ -40,13 +40,14 @@
     #define fseeko(stream, offset, origin) fseek(stream, offset, origin)
     #define ftello(stream) ftell(stream)
   #else
-    #define fseeko(stream, offset, origin) fseeko64(stream, offset, origin)
-    #define ftello(stream) ftello64(stream)
+    #define fseeko fseeko64
+    #define ftello ftello64
   #endif
 
   #define inline __inline
 
-  #define ftruncate(a,b) replace_ftruncate(a,b)
+  #undef ftruncate
+  #define ftruncate replace_ftruncate
   int replace_ftruncate(int fd, off64_t length);
 
   #ifdef __MINGW32__
@@ -190,17 +191,26 @@
 
   // Socekts
   #ifndef _MSC_VER
-  #define EMSGSIZE WSAEMSGSIZE
-  #define EAFNOSUPPORT WSAEAFNOSUPPORT
-  #define EWOULDBLOCK WSAEWOULDBLOCK
-  #define ECONNRESET WSAECONNRESET
-  #define EINPROGRESS WSAEINPROGRESS
-  #define ENOBUFS WSAENOBUFS
-  #define EPROTONOSUPPORT WSAEPROTONOSUPPORT
-  #define ECONNREFUSED WSAECONNREFUSED
-  #define EBADFD WSAENOTSOCK
-  #define ETIMEDOUT WSAETIMEDOUT
-  #define EOPNOTSUPP WSAEOPNOTSUPP
+  //#define EMSGSIZE WSAEMSGSIZE
+  //#define EAFNOSUPPORT WSAEAFNOSUPPORT
+  //#define EWOULDBLOCK WSAEWOULDBLOCK
+  //#define ENOBUFS WSAENOBUFS
+  //#define EPROTONOSUPPORT WSAEPROTONOSUPPORT
+  //#define ECONNREFUSED WSAECONNREFUSED
+  //#define EBADFD WSAENOTSOCK
+  //#define EOPNOTSUPP WSAEOPNOTSUPP
+
+    #ifndef ECONNRESET
+    #define ECONNRESET WSAECONNRESET // redis-cli.c
+    #endif
+
+    #ifndef EINPROGRESS
+    #define EINPROGRESS WSAEINPROGRESS
+    #endif
+
+    #ifndef ETIMEDOUT
+    #define ETIMEDOUT WSAETIMEDOUT
+    #endif
   #endif
 
   #define setsockopt(a,b,c,d,e) replace_setsockopt(a,b,c,d,e)
@@ -269,9 +279,9 @@
   #define pthread_join(a, b) win32_pthread_join(&(a), (b))
   int win32_pthread_join(pthread_t *thread, void **value_ptr);
 
-  static inline int pthread_exit(void *ret) {
-     ExitThread((DWORD)ret);
-  }
+  //static inline void pthread_exit(void *ret) {
+  //   ExitThread((DWORD)ret);
+  //}
 
   // typedef DWORD pthread_key_t;
   // static inline int pthread_key_create(pthread_key_t *keyp, void (*destructor)(void *value))

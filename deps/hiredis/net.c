@@ -36,7 +36,9 @@
   #include "winsock2.h"
   #include "windows.h"
   #define socklen_t int
-  #define EINPROGRESS WSAEWOULDBLOCK
+  #ifndef EINPROGRESS
+    #define EINPROGRESS WSAEWOULDBLOCK
+  #endif
 #else
 #include <sys/socket.h>
 #include <sys/select.h>
