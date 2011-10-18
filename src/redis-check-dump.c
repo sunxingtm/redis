@@ -644,6 +644,7 @@ void process() {
             /* advance position */
             positions[0] = positions[1];
         }
+        free(entry.key);
     }
 
     /* because there is another potential error,
