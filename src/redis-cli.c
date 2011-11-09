@@ -43,6 +43,9 @@
 
 #ifdef _WIN32
   #include <fcntl.h>
+  #ifndef FD_SETSIZE
+    #define FD_SETSIZE 16000
+  #endif
   #include <winsock2.h>
   #include <windows.h>
   #include "win32fixes.h"

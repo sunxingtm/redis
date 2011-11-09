@@ -35,6 +35,9 @@
 #include <stdarg.h> /* for va_list */
 #include <sys/time.h> /* for struct timeval */
 #ifdef _WIN32
+    #ifndef FD_SETSIZE
+      #define FD_SETSIZE 16000
+    #endif
     #include <winsock2.h>
     #include <windows.h>
 #endif

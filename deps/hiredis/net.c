@@ -33,6 +33,9 @@
 #include "fmacros.h"
 #include <sys/types.h>
 #ifdef _WIN32
+  #ifndef FD_SETSIZE
+    #define FD_SETSIZE 16000
+  #endif
   #include "winsock2.h"
   #include "windows.h"
   #define socklen_t int

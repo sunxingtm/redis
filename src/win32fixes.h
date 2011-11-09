@@ -18,6 +18,9 @@
   #include <io.h>
   #include <signal.h>
   #include <sys/types.h>
+  #ifndef FD_SETSIZE
+    #define FD_SETSIZE 16000
+  #endif
   #include <winsock2.h>  /* setsocketopt */
   #include <ws2tcpip.h>
   #include <windows.h>
