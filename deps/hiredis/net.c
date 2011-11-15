@@ -297,8 +297,10 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port, struct t
 
     if ((s = redisCreateSocket(c,AF_INET)) < 0)
         return REDIS_ERR;
+#ifndef _WIN32
     if (redisSetBlocking(c,s,0) != REDIS_OK)
         return REDIS_ERR;
+#endif
 
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
