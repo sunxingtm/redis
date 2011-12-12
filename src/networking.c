@@ -60,7 +60,7 @@ redisClient *createClient(int fd) {
     c->reqtype = 0;
     c->argc = 0;
     c->argv = NULL;
-    c->cmd = NULL;
+    c->cmd = c->lastcmd = NULL;
     c->multibulklen = 0;
     c->bulklen = -1;
     c->sentlen = 0;
@@ -792,6 +792,12 @@ int processInlineBuffer(redisClient *c) {
 /* Helper function. Trims query buffer to make the function that processes
  * multi bulk requests idempotent. */
 static void setProtocolError(redisClient *c, int pos) {
+    if (server.verbosity >= REDIS_VERBOSE) {
+        sds client = getClientInfoString(c);
+        redisLog(REDIS_VERBOSE,
+            "Protocol error from client: %s", client);
+        sdsfree(client);
+    }
     c->flags |= REDIS_CLOSE_AFTER_REPLY;
     c->querybuf = sdsrange(c->querybuf,pos,-1);
 }
@@ -973,6 +979,16 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     } else {
         return;
     }
+    if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
+        sds ci = getClientInfoString(c), bytes = sdsempty();
+
+        bytes = sdscatrepr(bytes,c->querybuf,64);
+        redisLog(REDIS_WARNING,"Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)", ci, bytes);
+        sdsfree(ci);
+        sdsfree(bytes);
+        freeClient(c);
+        return;
+    }
     processInputBuffer(c);
 }
 
@@ -1014,47 +1030,77 @@ void getClientsMaxBuffers(unsigned long *longest_output_list,
 }
 #endif
 
+/* Turn a Redis client into an sds string representing its state. */
+sds getClientInfoString(redisClient *client) {
+    char ip[32], flags[16], events[3], *p;
+    int port;
+    time_t now = time(NULL);
+    int emask;
+
+    if (anetPeerToString(client->fd,ip,&port) == -1) {
+        ip[0] = '?';
+        ip[1] = '\0';
+        port = 0;
+    }
+    p = flags;
+    if (client->flags & REDIS_SLAVE) {
+        if (client->flags & REDIS_MONITOR)
+            *p++ = 'O';
+        else
+            *p++ = 'S';
+    }
+    if (client->flags & REDIS_MASTER) *p++ = 'M';
+    if (client->flags & REDIS_MULTI) *p++ = 'x';
+    if (client->flags & REDIS_BLOCKED) *p++ = 'b';
+    if (client->flags & REDIS_IO_WAIT) *p++ = 'i';
+    if (client->flags & REDIS_DIRTY_CAS) *p++ = 'd';
+    if (client->flags & REDIS_CLOSE_AFTER_REPLY) *p++ = 'c';
+    if (client->flags & REDIS_UNBLOCKED) *p++ = 'u';
+    if (p == flags) *p++ = 'N';
+    *p++ = '\0';
+
+    emask = client->fd == -1 ? 0 : aeGetFileEvents(server.el,client->fd);
+    p = events;
+    if (emask & AE_READABLE) *p++ = 'r';
+    if (emask & AE_WRITABLE) *p++ = 'w';
+    *p = '\0';
+    return sdscatprintf(sdsempty(),
+        "addr=%s:%d fd=%d idle=%ld flags=%s db=%d sub=%d psub=%d qbuf=%lu obl=%lu oll=%lu events=%s cmd=%s",
+        ip,port,client->fd,
+        (long)(now - client->lastinteraction),
+        flags,
+        client->db->id,
+        (int) dictSize(client->pubsub_channels),
+        (int) listLength(client->pubsub_patterns),
+        (unsigned long) sdslen(client->querybuf),
+        (unsigned long) client->bufpos,
+        (unsigned long) listLength(client->reply),
+        events,
+        client->lastcmd ? client->lastcmd->name : "NULL");
+}
+
+sds getAllClientsInfoString(void) {
+    listNode *ln;
+    listIter li;
+    redisClient *client;
+    sds o = sdsempty();
+
+    listRewind(server.clients,&li);
+    while ((ln = listNext(&li)) != NULL) {
+        client = listNodeValue(ln);
+        o = sdscatsds(o,getClientInfoString(client));
+        o = sdscatlen(o,"\n",1);
+    }
+    return o;
+}
+
 void clientCommand(redisClient *c) {
     listNode *ln;
     listIter li;
     redisClient *client;
 
     if (!strcasecmp(c->argv[1]->ptr,"list") && c->argc == 2) {
-        sds o = sdsempty();
-        time_t now = time(NULL);
-
-        listRewind(server.clients,&li);
-        while ((ln = listNext(&li)) != NULL) {
-            char ip[32], flags[16], *p;
-            int port;
-
-            client = listNodeValue(ln);
-            if (anetPeerToString(client->fd,ip,&port) == -1) continue;
-            p = flags;
-            if (client->flags & REDIS_SLAVE) {
-                if (client->flags & REDIS_MONITOR)
-                    *p++ = 'O';
-                else
-                    *p++ = 'S';
-            }
-            if (client->flags & REDIS_MASTER) *p++ = 'M';
-            if (p == flags) *p++ = 'N';
-            if (client->flags & REDIS_MULTI) *p++ = 'x';
-            if (client->flags & REDIS_BLOCKED) *p++ = 'b';
-            if (client->flags & REDIS_IO_WAIT) *p++ = 'i';
-            if (client->flags & REDIS_DIRTY_CAS) *p++ = 'd';
-            if (client->flags & REDIS_CLOSE_AFTER_REPLY) *p++ = 'c';
-            if (client->flags & REDIS_UNBLOCKED) *p++ = 'u';
-            *p++ = '\0';
-            o = sdscatprintf(o,
-                "addr=%s:%d fd=%d idle=%ld flags=%s db=%d sub=%d psub=%d\n",
-                ip,port,client->fd,
-                (long)(now - client->lastinteraction),
-                flags,
-                client->db->id,
-                (int) dictSize(client->pubsub_channels),
-                (int) listLength(client->pubsub_patterns));
-        }
+        sds o = getAllClientsInfoString();
         addReplyBulkCBuffer(c,o,sdslen(o));
         sdsfree(o);
     } else if (!strcasecmp(c->argv[1]->ptr,"kill") && c->argc == 3) {

@@ -857,6 +857,7 @@ void initServerConfig() {
     server.dbnum = REDIS_DEFAULT_DBNUM;
     server.verbosity = REDIS_VERBOSE;
     server.maxidletime = REDIS_MAXIDLETIME;
+    server.client_max_querybuf_len = REDIS_MAX_QUERYBUF_LEN;
     server.saveparams = NULL;
     server.loading = 0;
     server.logfile = NULL; /* NULL = log on standard output */
@@ -942,6 +943,12 @@ void initServerConfig() {
     /* Slow log */
     server.slowlog_log_slower_than = REDIS_SLOWLOG_LOG_SLOWER_THAN;
     server.slowlog_max_len = REDIS_SLOWLOG_MAX_LEN;
+
+    /* Assert */
+    server.assert_failed = "<no assertion failed>";
+    server.assert_file = "<no file>";
+    server.assert_line = 0;
+    server.bug_report_start = 0;
 }
 
 void initServer() {
@@ -1137,7 +1144,7 @@ int processCommand(redisClient *c) {
 
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
-    c->cmd = lookupCommand(c->argv[0]->ptr);
+    c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
     if (!c->cmd) {
         addReplyErrorFormat(c,"unknown command '%s'",
             (char*)c->argv[0]->ptr);
@@ -1484,10 +1491,14 @@ sds genRedisInfoString(void) {
         info = sdscatprintf(info,
             "aof_current_size:%lld\r\n"
             "aof_base_size:%lld\r\n"
-            "aof_pending_rewrite:%d\r\n",
+            "aof_pending_rewrite:%d\r\n"
+            "aof_buffer_length:%zu\r\n"
+            "aof_pending_bio_fsync:%llu\r\n",
             (long long) server.appendonly_current_size,
             (long long) server.auto_aofrewrite_base_size,
-            server.aofrewrite_scheduled);
+            server.aofrewrite_scheduled,
+            sdslen(server.aofbuf),
+            bioPendingJobsOfType(REDIS_BIO_AOF_FSYNC));
     }
 
     if (server.masterhost) {
@@ -1888,32 +1899,56 @@ static void *getMcontextEip(ucontext_t *uc) {
 #endif
 }
 
+void bugReportStart(void) {
+    if (server.bug_report_start == 0) {
+        redisLog(REDIS_WARNING,
+            "=== REDIS BUG REPORT START: Cut & paste starting from here ===");
+        server.bug_report_start = 1;
+    }
+}
+
 static void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
     void *trace[100];
     char **messages = NULL;
     int i, trace_size = 0;
     ucontext_t *uc = (ucontext_t*) secret;
-    sds infostring;
+    sds infostring, clients;
     struct sigaction act;
     REDIS_NOTUSED(info);
 
+    bugReportStart();
     redisLog(REDIS_WARNING,
-        "======= Ooops! Redis %s got signal: -%d- =======", REDIS_VERSION, sig);
-    infostring = genRedisInfoString();
-    redisLog(REDIS_WARNING, "%s",infostring);
-    /* It's not safe to sdsfree() the returned string under memory
-     * corruption conditions. Let it leak as we are going to abort */
+        "    Redis %s crashed by signal: %d", REDIS_VERSION, sig);
+    redisLog(REDIS_WARNING,
+        "    Failed assertion: %s (%s:%d)", server.assert_failed,
+                        server.assert_file, server.assert_line);
 
+    /* Generate the stack trace */
     trace_size = backtrace(trace, 100);
+
     /* overwrite sigaction with caller's address */
     if (getMcontextEip(uc) != NULL) {
         trace[1] = getMcontextEip(uc);
     }
     messages = backtrace_symbols(trace, trace_size);
-
+    redisLog(REDIS_WARNING, "--- STACK TRACE");
     for (i=1; i<trace_size; ++i)
         redisLog(REDIS_WARNING,"%s", messages[i]);
 
+    /* Log INFO and CLIENT LIST */
+    redisLog(REDIS_WARNING, "--- INFO OUTPUT");
+    infostring = genRedisInfoString();
+    redisLog(REDIS_WARNING, infostring);
+    redisLog(REDIS_WARNING, "--- CLIENT LIST OUTPUT");
+    clients = getAllClientsInfoString();
+    redisLog(REDIS_WARNING, clients);
+    /* Don't sdsfree() strings to avoid a crash. Memory may be corrupted. */
+
+    redisLog(REDIS_WARNING,
+"=== REDIS BUG REPORT END. Make sure to include from START to END. ===\n\n"
+"    Please report the crash opening an issue on github:\n\n"
+"        http://github.com/antirez/redis/issues\n\n"
+);
     /* free(messages); Don't call free() with possibly corrupted memory. */
     if (server.daemonize) unlink(server.pidfile);
 
