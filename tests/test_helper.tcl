@@ -32,6 +32,7 @@ set ::all_tests {
     unit/pubsub
     unit/slowlog
     unit/maxmemory
+    unit/introspection
 }
 # Index to the next test to run in the ::all_tests list.
 set ::next_test 0
@@ -152,9 +153,9 @@ proc cleanup {} {
 proc find_available_port start {
     for {set j $start} {$j < $start+1024} {incr j} {
         if {[catch {
-            set fd [socket 127.0.0.1 $start]
+            set fd [socket 127.0.0.1 $j]
         }]} {
-            return $start
+            return $j
         } else {
             close $fd
         }
