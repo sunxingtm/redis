@@ -317,7 +317,7 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port, struct t
         he = gethostbyname(addr);
         if (he == NULL) {
             __redisSetError(c,REDIS_ERR_OTHER,
-                sdscatprintf(sdsempty(),"can't resolve: %s\n", addr));
+                sdscatprintf(sdsempty(),"Can't resolve: %s", addr));
             closesocket(s);
             return REDIS_ERR;;
         }

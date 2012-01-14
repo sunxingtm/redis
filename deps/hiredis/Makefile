@@ -29,10 +29,11 @@ ifeq ($(uname_S),Darwin)
 else ifeq ($(osname),MINGW32_NT)
   CFLAGS?= -std=gnu99 -pedantic $(OPTIMIZATION) -Wall -W -D_ISOC99_SOURCE -D__USE_MINGW_ANSI_STDIO=1 -Wwrite-strings $(ARCH) $(PROF)
   CCLINK?= -mthreads
-  LIBS?= -lws2_32 
-  DYLIBNAME?=libhiredis.dll
+  LIBS?= -lws2_32
+  LDFLAGS?=-L.
+  DYLIBNAME?=hiredis.dll
   DYLIB_MAKE_CMD?=gcc -shared -Wl,-soname,${DYLIBNAME} -o ${DYLIBNAME} ${OBJ} ${LIBS}
-  STLIBNAME?=libhiredis.a  
+  STLIBNAME?=hiredis.a
   STLIB_MAKE_CMD?=ar rcs ${STLIBNAME} ${OBJ}
   CC=gcc
 else
