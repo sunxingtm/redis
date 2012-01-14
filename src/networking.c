@@ -27,6 +27,8 @@ static inline int writev(int sock, struct iovec *iov, int nvecs)
 }
 #endif 
 
+static void setProtocolError(redisClient *c, int pos);
+
 void *dupClientReplyValue(void *o) {
     incrRefCount((robj*)o);
     return o;
@@ -451,6 +453,16 @@ void addReplyBulkLongLong(redisClient *c, long long ll) {
     addReplyBulkCBuffer(c,buf,len);
 }
 
+/* Copy 'src' client output buffers into 'dst' client output buffers.
+ * The function takes care of freeing the old output buffers of the
+ * destination client. */
+void copyClientOutputBuffer(redisClient *dst, redisClient *src) {
+    listRelease(dst->reply);
+    dst->reply = listDup(src->reply);
+    memcpy(dst->buf,src->buf,src->bufpos);
+    dst->bufpos = src->bufpos;
+}
+
 static void acceptCommonHandler(int fd) {
     redisClient *c;
     if ((c = createClient(fd)) == NULL) {
@@ -526,6 +538,9 @@ static void freeClientArgv(redisClient *c) {
 
 void freeClient(redisClient *c) {
     listNode *ln;
+
+    /* If this is marked as current client unset it */
+    if (server.current_client == c) server.current_client = NULL;
 
     /* Note that if the client we are freeing is blocked into a blocking
      * call, we have to set querybuf to NULL *before* to call
@@ -762,8 +777,13 @@ int processInlineBuffer(redisClient *c) {
     size_t querylen;
 
     /* Nothing to do without a \r\n */
-    if (newline == NULL)
+    if (newline == NULL) {
+        if (sdslen(c->querybuf) > REDIS_INLINE_MAX_SIZE) {
+            addReplyError(c,"Protocol error: too big inline request");
+            setProtocolError(c,0);
+        }
         return REDIS_ERR;
+    }
 
     /* Split the input buffer up to the \r\n */
     querylen = newline-(c->querybuf);
@@ -813,8 +833,13 @@ int processMultibulkBuffer(redisClient *c) {
 
         /* Multi bulk length cannot be read without a \r\n */
         newline = strchr(c->querybuf,'\r');
-        if (newline == NULL)
+        if (newline == NULL) {
+            if (sdslen(c->querybuf) > REDIS_INLINE_MAX_SIZE) {
+                addReplyError(c,"Protocol error: too big mbulk count string");
+                setProtocolError(c,0);
+            }
             return REDIS_ERR;
+        }
 
         /* Buffer should also contain \n */
         if (newline-(c->querybuf) > ((signed)sdslen(c->querybuf)-2))
@@ -848,8 +873,13 @@ int processMultibulkBuffer(redisClient *c) {
         /* Read bulk length if unknown */
         if (c->bulklen == -1) {
             newline = strchr(c->querybuf+pos,'\r');
-            if (newline == NULL)
+            if (newline == NULL) {
+                if (sdslen(c->querybuf) > REDIS_INLINE_MAX_SIZE) {
+                    addReplyError(c,"Protocol error: too big bulk count string");
+                    setProtocolError(c,0);
+                }
                 break;
+            }
 
             /* Buffer should also contain \n */
             if (newline-(c->querybuf) > ((signed)sdslen(c->querybuf)-2))
@@ -890,9 +920,9 @@ int processMultibulkBuffer(redisClient *c) {
     c->querybuf = sdsrange(c->querybuf,pos,-1);
 
     /* We're done when c->multibulk == 0 */
-    if (c->multibulklen == 0) {
-        return REDIS_OK;
-    }
+    if (c->multibulklen == 0) return REDIS_OK;
+
+    /* Still not read to process the command */
     return REDIS_ERR;
 }
 
@@ -977,6 +1007,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         c->querybuf = sdscatlen(c->querybuf,buf,nread);
         c->lastinteraction = time(NULL);
     } else {
+        server.current_client = NULL;
         return;
     }
     if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
@@ -990,6 +1021,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
     processInputBuffer(c);
+    server.current_client = NULL;
 }
 
 #ifdef _WIN64

@@ -761,8 +761,11 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
             call(c);
             resetClient(c);
             /* There may be more data to process in the input buffer. */
-            if (c->querybuf && sdslen(c->querybuf) > 0)
+            if (c->querybuf && sdslen(c->querybuf) > 0) {
+                server.current_client = c;
                 processInputBuffer(c);
+                server.current_client = NULL;
+            }
         }
     }
 
@@ -966,6 +969,7 @@ void initServer() {
 #endif
 
     server.mainthread = pthread_self();
+    server.current_client = NULL;
 #ifdef _WIN32
      /* Force binary mode on all files */
     _fmode = _O_BINARY;
@@ -1346,6 +1350,7 @@ sds genRedisInfoString(void) {
         "redis_git_dirty:%d\r\n"
         "arch_bits:%s\r\n"
         "multiplexing_api:%s\r\n"
+        "gcc_version:%d.%d.%d\r\n"
 #ifdef _WIN64        
         "process_id:%lld\r\n"
 #else
@@ -1406,7 +1411,12 @@ sds genRedisInfoString(void) {
         (sizeof(long) == 8) ? "64" : "32",
 #endif
         aeGetApiName(),
-#ifdef _WIN64        
+#ifdef __GNUC__
+        __GNUC__,__GNUC_MINOR__,__GNUC_PATCHLEVEL__,
+#else
+        0,0,0,
+#endif
+#ifdef _WIN64
         (long long) getpid(),
 #else
         (long) getpid(),
@@ -1499,6 +1509,39 @@ sds genRedisInfoString(void) {
             server.aofrewrite_scheduled,
             sdslen(server.aofbuf),
             bioPendingJobsOfType(REDIS_BIO_AOF_FSYNC));
+    }
+
+    /* List connected slaves */
+    if (listLength(server.slaves)) {
+        int slaveid = 0;
+        listNode *ln;
+        listIter li;
+
+        listRewind(server.slaves,&li);
+        while((ln = listNext(&li))) {
+            redisClient *slave = listNodeValue(ln);
+            char *state = NULL;
+            char ip[32];
+            int port;
+
+            if (anetPeerToString(slave->fd,ip,&port) == -1) continue;
+            switch(slave->replstate) {
+            case REDIS_REPL_WAIT_BGSAVE_START:
+            case REDIS_REPL_WAIT_BGSAVE_END:
+                state = "wait_bgsave";
+                break;
+            case REDIS_REPL_SEND_BULK:
+                state = "send_bulk";
+                break;
+            case REDIS_REPL_ONLINE:
+                state = "online";
+                break;
+            }
+            if (state == NULL) continue;
+            info = sdscatprintf(info,"slave%d:%s,%d,%s\r\n",
+                slaveid,ip,port,state);
+            slaveid++;
+        }
     }
 
     if (server.masterhost) {
@@ -1943,6 +1986,40 @@ static void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
     clients = getAllClientsInfoString();
     redisLog(REDIS_WARNING, clients);
     /* Don't sdsfree() strings to avoid a crash. Memory may be corrupted. */
+
+    /* Log CURRENT CLIENT info */
+    if (server.current_client) {
+        redisClient *cc = server.current_client;
+        sds client;
+        int j;
+
+        redisLog(REDIS_WARNING, "--- CURRENT CLIENT INFO");
+        client = getClientInfoString(cc);
+        redisLog(REDIS_WARNING,"client: %s", client);
+        /* Missing sdsfree(client) to avoid crash if memory is corrupted. */
+        for (j = 0; j < cc->argc; j++) {
+            robj *decoded;
+
+            decoded = getDecodedObject(cc->argv[j]);
+            redisLog(REDIS_WARNING,"argv[%d]: '%s'", j, (char*)decoded->ptr);
+            decrRefCount(decoded);
+        }
+        /* Check if the first argument, usually a key, is found inside the
+         * selected DB, and if so print info about the associated object. */
+        if (cc->argc >= 1) {
+            robj *val, *key;
+            dictEntry *de;
+
+            key = getDecodedObject(cc->argv[1]);
+            de = dictFind(cc->db->dict, key->ptr);
+            if (de) {
+                val = dictGetEntryVal(de);
+                redisLog(REDIS_WARNING,"key '%s' found in DB containing the following object:", key->ptr);
+                redisLogObjectDebugInfo(val);
+            }
+            decrRefCount(key);
+        }
+    }
 
     redisLog(REDIS_WARNING,
 "=== REDIS BUG REPORT END. Make sure to include from START to END. ===\n\n"
