@@ -33,7 +33,7 @@ else ifeq ($(osname),MINGW32_NT)
   LDFLAGS?=-L.
   DYLIBNAME?=hiredis.dll
   DYLIB_MAKE_CMD?=gcc -shared -Wl,-soname,${DYLIBNAME} -o ${DYLIBNAME} ${OBJ} ${LIBS}
-  STLIBNAME?=hiredis.a
+  STLIBNAME?=libhiredis.a
   STLIB_MAKE_CMD?=ar rcs ${STLIBNAME} ${OBJ}
   CC=gcc
 else

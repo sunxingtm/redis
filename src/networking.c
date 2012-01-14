@@ -25,7 +25,7 @@ static inline int writev(int sock, struct iovec *iov, int nvecs)
 
     return -1;
 }
-#endif 
+#endif
 
 static void setProtocolError(redisClient *c, int pos);
 
@@ -51,7 +51,7 @@ redisClient *createClient(int fd) {
         closesocket(fd);
 #else
         close(fd);
-#endif 
+#endif
         zfree(c);
         return NULL;
     }
@@ -333,7 +333,7 @@ void setDeferredMultiBulkLength(redisClient *c, void *node, long long length) {
         }
     }
 }
-#else 
+#else
 /* Populate the length object and try glueing it to the next chunk. */
 void setDeferredMultiBulkLength(redisClient *c, void *node, long length) {
     listNode *ln = (listNode*)node;
@@ -407,7 +407,7 @@ void addReplyBulkLen(redisClient *c, robj *obj) {
         long long n = (long long)obj->ptr;
 #else
         long n = (long)obj->ptr;
-#endif        
+#endif
         /* Compute how many bytes will take this integer as a radix 10 string */
         len = 1;
         if (n < 0) {
@@ -471,7 +471,7 @@ static void acceptCommonHandler(int fd) {
         closesocket(fd); /* May be already closed, just ingore errors */
 #else
         close(fd); /* May be already closed, just ingore errors */
-#endif         
+#endif
         return;
     }
     /* If maxclient directive is set and this is one client more... close the
@@ -489,7 +489,7 @@ static void acceptCommonHandler(int fd) {
         if (write(c->fd,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
-#endif         
+#endif
         freeClient(c);
         return;
     }
@@ -569,7 +569,7 @@ void freeClient(redisClient *c) {
     closesocket(c->fd);
 #else
     close(c->fd);
-#endif     
+#endif
     /* Remove from the list of clients */
     ln = listSearchKey(server.clients,c);
     redisAssert(ln != NULL);
@@ -972,6 +972,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(mask);
 
+    server.current_client = c;
 #ifdef _WIN32
     nread = recv((SOCKET)fd, buf, REDIS_IOBUF_LEN, 0);
     if (nread < 0) {
@@ -989,7 +990,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 #else
     nread = read(fd, buf, REDIS_IOBUF_LEN);
-#endif 
+#endif
     if (nread == -1) {
         if (errno == EAGAIN) {
             nread = 0;
@@ -1173,7 +1174,7 @@ void rewriteClientCommandVector(redisClient *c, int argc, ...) {
     va_start(ap,argc);
     for (j = 0; j < argc; j++) {
         robj *a;
-        
+
         a = va_arg(ap, robj*);
         argv[j] = a;
         incrRefCount(a);
