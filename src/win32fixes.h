@@ -161,14 +161,18 @@
   #define SA_ONESHOT      SA_RESETHAND
   #define SA_RESTORER     0x04000000
 
-  #ifdef _WIN64
-    #define sigset_t _sigset_t
-  #else
-    #ifndef _SIGSET_T_
+  #ifndef _SIGSET_T_
     #define _SIGSET_T_
-        typedef unsigned long sigset_t;
-    #endif /* _SIGSET_T_ */
- #endif
+    #ifdef _WIN64
+      typedef unsigned long long _sigset_t;
+    #else
+      typedef unsigned long _sigset_t;
+    #endif   
+  #endif /* _SIGSET_T_ */
+
+  #ifndef _POSIX  
+    # define sigset_t _sigset_t
+  #endif 
 
   #define sigemptyset(pset)    (*(pset) = 0)
   #define sigfillset(pset)     (*(pset) = (unsigned int)-1)
