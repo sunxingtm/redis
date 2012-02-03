@@ -216,7 +216,11 @@ void redisLog(int level, const char *fmt, ...) {
 
     if (level < server.verbosity) return;
 
+#ifdef _WIN32
+    fp = (server.logfile == NULL) ? stdout : fopen(server.logfile,"ab");
+#else
     fp = (server.logfile == NULL) ? stdout : fopen(server.logfile,"a");
+#endif
     if (!fp) return;
 
     va_start(ap, fmt);
@@ -1060,7 +1064,7 @@ void initServer() {
 
     if (server.appendonly) {
 #ifdef _WIN32
-        server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,0);
+        server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
 #else
         server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
 #endif
