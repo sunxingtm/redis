@@ -73,23 +73,30 @@ endif
 
 CCOPT= $(CFLAGS) $(ARCH) $(PROF)
 
+WINDRES?= windres
+ifneq ($(DEBUG),)
+WINDRESOPT+= -D DEBUG
+endif
+
 PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
 INSTALL= cp -p
 
 OBJ = win32fixes.o adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o vm.o pubsub.o multi.o debug.o sort.o intset.o syncio.o slowlog.o bio.o
+SRVOBJ = win32fixes.o service.o service-res.o zmalloc.o
 BENCHOBJ = win32fixes.o ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = win32fixes.o anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
 CHECKDUMPOBJ = win32fixes.o redis-check-dump.o lzf_c.o lzf_d.o
 CHECKAOFOBJ = win32fixes.o redis-check-aof.o
 
 PRGNAME = redis-server
+SRVPRGNAME = redis-service
 BENCHPRGNAME = redis-benchmark
 CLIPRGNAME = redis-cli
 CHECKDUMPPRGNAME = redis-check-dump
 CHECKAOFPRGNAME = redis-check-aof
 
-all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server
+all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server redis-service service-setup-helper.dll
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -141,6 +148,8 @@ replication.o: replication.c redis.h fmacros.h config.h ae.h sds.h dict.h \
   adlist.h zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h util.h
 sds.o: sds.c sds.h zmalloc.h
 sha1.o: sha1.c sha1.h
+service.o: service.c
+service-res.o: service.rc version.h release.h
 slowlog.o: slowlog.c redis.h fmacros.h config.h ae.h sds.h dict.h \
   adlist.h zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h util.h \
   slowlog.h
@@ -203,13 +212,25 @@ redis-check-aof: $(CHECKAOFOBJ)
 redis-server: $(OBJ)
 	$(QUIET_LINK)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK) $(ALLOC_LINK) $(LIBS)
 
+redis-service: dependencies $(SRVOBJ)
+	$(CC) -o $(SRVPRGNAME) $(CCOPT) $(DEBUG) $(SRVOBJ) ../deps/hiredis/libhiredis.a $(LIBS)
+
+service.o:
+	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) service.c
+
+service-res.o: service.rc
+	$(WINDRES) $(WINDRESOPT) service.rc $@
+
+service-setup-helper.dll: service-setup-helper.c
+	$(CC) -o $@ -shared $(CFLAGS) $(DEBUG) -m32 -Wl,--kill-at $< -lnetapi32 -ladvapi32
+
 # Because the jemalloc.h header is generated as a part of the jemalloc build
 # process, building it should complete before building any other object.
 %.o: %.c $(ALLOC_DEP)
 	$(QUIET_CC)$(CC) -c $(CFLAGS) $(ALLOC_FLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe
+	rm -rf $(PRGNAME) $(SRVPRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov. *.exe *.dll
 
 dep:
 	$(CC) -MM *.c -I ../deps/hiredis -I ../deps/linenoise

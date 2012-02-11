@@ -13,9 +13,13 @@ clean:
 	cd deps/hiredis && $(MAKE) $@
 	cd deps/linenoise && $(MAKE) $@
 	-(cd deps/jemalloc && $(MAKE) distclean)
+	cd setup && $(MAKE) $@
 
 $(TARGETS):
 	cd src && $(MAKE) $@
+
+setup: all
+	cd setup && $(MAKE) $@
 
 src/help.h:
 	@./utils/generate-command-help.rb > $@
