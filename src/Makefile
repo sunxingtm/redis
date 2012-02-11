@@ -77,6 +77,9 @@ WINDRES?= windres
 ifneq ($(DEBUG),)
 WINDRESOPT+= -D DEBUG
 endif
+ifeq ($(ARCH),-m32)
+WINDRESOPT+= --target pe-i386
+endif
 
 PREFIX= /usr/local
 INSTALL_BIN= $(PREFIX)/bin
