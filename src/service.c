@@ -451,7 +451,7 @@ static int startRedis(void) {
 
     g_redisProcess = NULL;
 
-    sds commandLine = sdscatprintf(sdsempty(), "%s %s", g_serviceName, g_redisConfPath);
+    sds commandLine = sdscatprintf(sdsempty(), "\"%s\" \"%s\"", g_serviceName, g_redisConfPath);
 
     LOG_INFO("Starting Redis with command line: %s", commandLine);
 
