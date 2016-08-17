@@ -1,7 +1,7 @@
 OBSOLETE
 --------
 
-This Windows port is only up to Redis 2.4.6. There have been a number of major improvements to Redis since that version. Other projects such as **[MSOpenTech/redis](https://github.com/MSOpenTech/redis)** provide Windows releases of more recent versions of Redis. 
+This Windows port is only up to Redis 2.4.6. There have been a number of major improvements to Redis since that version. Other projects such as MSOpenTech/redis (https://github.com/MSOpenTech/redis) provide Windows releases of more recent versions of Redis. 
 
 
 About this fork
