@@ -1,8 +1,8 @@
-Download the binaries from:
+OBSOLETE
+--------
 
-  http://ruilopes.com/redis-setup/
+This Windows port is only up to Redis 2.4.6. There have been a number of major improvements to Redis since that version. Other projects such as **[MSOpenTech/redis](https://github.com/MSOpenTech/redis)** provide Windows releases of more recent versions of Redis. 
 
-------
 
 About this fork
 ---------------
@@ -45,6 +45,10 @@ It is made to be as close as possible to original unix version.
 You can download prebuilt binaries here: 
 
    http://github.com/dmajkic/redis/downloads
+
+or here:
+
+   http://ruilopes.com/redis-setup/
 
 Building Redis on Windows
 -------------------------
